@@ -1,0 +1,20 @@
+{
+  "name": "the-reviewer",
+  "version": "0.1.0",
+  "description": "A macOS CLI daemon that watches GitHub for PR review assignments and launches AI review tools",
+  "type": "module",
+  "bin": {
+    "the-reviewer": "src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts start",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
+  },
+  "dependencies": {
+    "yaml": "^2.7.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
