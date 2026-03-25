@@ -30,6 +30,8 @@ function renderToolPills(toolStatus: Record<string, string> | null): string {
     .join(" ");
 }
 
+const RETRYABLE = new Set(["done", "error", "dismissed"]);
+
 function renderPRRows(prs: PRReview[]): string {
   if (prs.length === 0) {
     return '<tr><td colspan="7" class="empty">No PRs tracked yet.</td></tr>';
@@ -44,6 +46,7 @@ function renderPRRows(prs: PRReview[]): string {
       <td>${pr.title ?? "—"}</td>
       <td>${renderToolPills(pr.tool_status)}</td>
       <td>
+        ${RETRYABLE.has(pr.status) ? `<button class="retry-btn" onclick="retryReview(${pr.id})">↻ review</button>` : ""}
         <button class="detail-btn" onclick="toggleDetail(${pr.id})">▶</button>
       </td>
     </tr>
@@ -86,6 +89,9 @@ function renderHTML(prs: PRReview[]): string {
     .empty { text-align: center; color: #484f58; padding: 2rem; }
     .detail-btn { background: none; border: 1px solid #30363d; color: #8b949e; cursor: pointer; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.75rem; }
     .detail-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+    .retry-btn { background: none; border: 1px solid #238636; color: #3fb950; cursor: pointer; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.3rem; }
+    .retry-btn:hover { background: #238636; color: #fff; }
+    .retry-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .detail-row td { padding: 0; }
     .detail-content { padding: 1rem 1.5rem; background: #161b22; }
     .detail-content h4 { font-size: 0.8rem; color: #8b949e; margin: 0.75rem 0 0.3rem; text-transform: uppercase; }
@@ -121,6 +127,16 @@ function renderHTML(prs: PRReview[]): string {
     </table>
   </div>
   <script>
+    async function retryReview(prId) {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = "starting...";
+      try {
+        const res = await fetch("/api/reviews/" + prId + "/retry", { method: "POST" });
+        if (!res.ok) { const msg = await res.text(); btn.textContent = "error"; setTimeout(function() { btn.textContent = "↻ review"; btn.disabled = false; }, 2000); return; }
+        btn.textContent = "launched";
+      } catch { btn.textContent = "↻ review"; btn.disabled = false; }
+    }
     async function toggleDetail(prId) {
       const row = document.getElementById("detail-" + prId);
       if (!row) return;
@@ -248,6 +264,28 @@ export function createDashboardServer(
         if (outputsMatch && req.method === "GET") {
           const id = parseInt(outputsMatch[1]!, 10);
           return Response.json(queries.getOutputs(id));
+        }
+
+        // POST /api/reviews/:id/retry — re-run review
+        const retryMatch = path.match(/^\/api\/reviews\/(\d+)\/retry$/);
+        if (retryMatch && req.method === "POST") {
+          const id = parseInt(retryMatch[1]!, 10);
+          const pr = queries.getPR(id);
+          if (!pr) {
+            return Response.json({ error: "PR not found" }, { status: 404 });
+          }
+          if (!pr.url) {
+            return Response.json({ error: "PR has no URL" }, { status: 400 });
+          }
+          // Spawn review in background
+          queries.updatePRStatus(pr.id, "accepted");
+          queries.insertEvent(pr.id, "accepted", "Retry triggered from dashboard");
+          Bun.spawn(["bun", "run", "src/index.ts", "review", pr.url, "--force"], {
+            stdout: "ignore",
+            stderr: "ignore",
+            cwd: import.meta.dir + "/../..",
+          });
+          return Response.json({ ok: true, status: "launched" });
         }
 
         // GET /api/sse — Server-Sent Events

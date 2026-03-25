@@ -102,7 +102,13 @@ export async function startCommand(_args: string[]): Promise<void> {
 
             if (action === "accept") {
               queries.updatePRStatus(row.id, "accepted");
-              console.log(`  Use: make review PR=${pr.url}`);
+              // Run review pipeline in background
+              const metadata = await enrichPR(`https://api.github.com/repos/${pr.repo}/pulls/${pr.number}`);
+              if (metadata) {
+                handleNewReview(metadata, { config, queries }).catch((err) => {
+                  console.error(`  [error] Review failed for ${pr.repo}#${pr.number}: ${err.message}`);
+                });
+              }
             } else if (action === "dismiss" || action === "timeout" || action === "snooze") {
               queries.updatePRStatus(row.id, "dismissed");
             } else if (action === "view") {
