@@ -1,4 +1,4 @@
-.PHONY: start stop status review test test-watch install help
+.PHONY: start stop status review config-init test test-watch install help
 
 BUN := bun
 CLI := $(BUN) run src/index.ts
@@ -22,6 +22,9 @@ review: ## Manually review a PR (usage: make review PR=https://github.com/org/re
 	@test -n "$(PR)" || (echo "Usage: make review PR=<pr-url>" && exit 1)
 	@echo "Triggering manual review for $(PR)..."
 	$(CLI) review $(PR)
+
+config-init: ## Initialize default config files
+	$(CLI) config init
 
 test: ## Run all tests
 	$(BUN) test
