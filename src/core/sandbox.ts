@@ -66,12 +66,22 @@ export async function createWorktree(
   const barePath = getBareRepoPath(repo, baseDir);
   const worktreePath = getWorktreePath(repo, prNumber, baseDir);
 
+  // Fetch the PR branch
+  await runGit(["fetch", "origin", `${branch}:${branch}`], barePath);
+
+  // If worktree already exists, reuse it (just pull latest)
+  if (existsSync(join(worktreePath, ".git"))) {
+    await runGit(["checkout", branch], worktreePath);
+    await runGit(["reset", "--hard", `origin/${branch}`], worktreePath);
+    return worktreePath;
+  }
+
+  // Clean up stale git worktree reference if path was removed but not pruned
+  await runGit(["worktree", "prune"], barePath);
+
   // Create parent directory
   const parentDir = join(worktreePath, "..");
   await Bun.spawn(["mkdir", "-p", parentDir], { stdout: "pipe" }).exited;
-
-  // Fetch the PR branch
-  await runGit(["fetch", "origin", `${branch}:${branch}`], barePath);
 
   const { exitCode } = await runGit(
     ["worktree", "add", worktreePath, branch],
@@ -100,13 +110,18 @@ export async function generateDiff(worktreePath: string, baseBranch: string): Pr
   return stdout;
 }
 
-export async function removeWorktree(worktreePath: string): Promise<void> {
-  // Find the bare repo by traversing up to find a .git reference
-  const { exitCode } = await runGit(["worktree", "remove", worktreePath, "--force"]);
-
-  if (exitCode !== 0) {
-    // Try manual cleanup
-    await Bun.spawn(["rm", "-rf", worktreePath], { stdout: "pipe" }).exited;
+export async function removeWorktree(worktreePath: string, barePath?: string): Promise<void> {
+  if (barePath) {
+    const { exitCode } = await runGit(["worktree", "remove", worktreePath, "--force"], barePath);
+    if (exitCode !== 0) {
+      await Bun.spawn(["rm", "-rf", worktreePath], { stdout: "pipe" }).exited;
+    }
+    await runGit(["worktree", "prune"], barePath);
+  } else {
+    const { exitCode } = await runGit(["worktree", "remove", worktreePath, "--force"]);
+    if (exitCode !== 0) {
+      await Bun.spawn(["rm", "-rf", worktreePath], { stdout: "pipe" }).exited;
+    }
   }
 }
 

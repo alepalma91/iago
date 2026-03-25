@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { Queries } from "../db/queries.js";
 import type { PRMetadata, AppConfig, NotificationAction } from "../types/index.js";
 import { sendPRNotification, openInBrowser } from "./notifier.js";
-import { ensureReferenceRepo, createWorktree, generateDiff, getOutputPath } from "./sandbox.js";
+import { ensureReferenceRepo, createWorktree, generateDiff, getOutputPath, removeWorktree, getBareRepoPath, getWorktreePath } from "./sandbox.js";
 import { launchAllTools, writeOutput } from "./launcher.js";
 import { assemblePrompt, loadPromptFile } from "./prompt.js";
 import { getDataDir, loadRepoConfig, mergeConfigs } from "./config.js";
@@ -20,63 +20,69 @@ export async function handleNewReview(
   const { config, queries } = ctx;
   const dataDir = getDataDir(config);
 
-  // 1. Insert PR into database
+  // 1. Check if already tracked
   const existing = queries.getPRByRepoAndNumber(metadata.repo, metadata.number);
-  if (existing) return; // Already tracking this PR
 
-  const pr = queries.insertPR({
-    pr_number: metadata.number,
-    repo: metadata.repo,
-    title: metadata.title,
-    author: metadata.author,
-    url: metadata.url,
-    branch: metadata.branch,
-    base_branch: metadata.base_branch,
-  });
-
-  queries.insertEvent(pr.id, "detected", `PR #${metadata.number} detected`);
-
-  // 2. Notify user
-  queries.updatePRStatus(pr.id, "notified");
-  queries.insertEvent(pr.id, "notified", "User notified");
-
-  let action: NotificationAction;
-  try {
-    action = await sendPRNotification({
-      repo: metadata.repo,
+  let pr;
+  if (existing && existing.status === "accepted") {
+    // Already accepted (e.g. from startup catch-up) — skip notification, proceed to review
+    pr = existing;
+  } else if (existing) {
+    return; // Already tracking this PR in another state
+  } else {
+    pr = queries.insertPR({
       pr_number: metadata.number,
+      repo: metadata.repo,
       title: metadata.title,
       author: metadata.author,
       url: metadata.url,
+      branch: metadata.branch,
+      base_branch: metadata.base_branch,
     });
-  } catch {
-    // Alerter not available — auto-accept for MVP
-    action = "accept";
+
+    queries.insertEvent(pr.id, "detected", `PR #${metadata.number} detected`);
+
+    // 2. Notify user
+    queries.updatePRStatus(pr.id, "notified");
+    queries.insertEvent(pr.id, "notified", "User notified");
+
+    let action: NotificationAction;
+    try {
+      action = await sendPRNotification({
+        repo: metadata.repo,
+        pr_number: metadata.number,
+        title: metadata.title,
+        author: metadata.author,
+        url: metadata.url,
+      });
+    } catch {
+      // Alerter not available — auto-accept for MVP
+      action = "accept";
+    }
+
+    queries.insertEvent(pr.id, "user_action", `User action: ${action}`);
+
+    // 3. Handle user action
+    if (action === "dismiss" || action === "timeout") {
+      queries.updatePRStatus(pr.id, "dismissed");
+      return;
+    }
+
+    if (action === "view") {
+      await openInBrowser(metadata.url);
+      queries.updatePRStatus(pr.id, "dismissed");
+      return;
+    }
+
+    if (action === "snooze") {
+      queries.updatePRStatus(pr.id, "dismissed");
+      return;
+    }
+
+    // action === "accept"
+    queries.updatePRStatus(pr.id, "accepted");
+    queries.insertEvent(pr.id, "accepted", "Review accepted");
   }
-
-  queries.insertEvent(pr.id, "user_action", `User action: ${action}`);
-
-  // 3. Handle user action
-  if (action === "dismiss" || action === "timeout") {
-    queries.updatePRStatus(pr.id, "dismissed");
-    return;
-  }
-
-  if (action === "view") {
-    await openInBrowser(metadata.url);
-    queries.updatePRStatus(pr.id, "dismissed");
-    return;
-  }
-
-  if (action === "snooze") {
-    // For MVP, treat snooze as dismiss — snooze re-notify not yet implemented
-    queries.updatePRStatus(pr.id, "dismissed");
-    return;
-  }
-
-  // action === "accept"
-  queries.updatePRStatus(pr.id, "accepted");
-  queries.insertEvent(pr.id, "accepted", "Review accepted");
 
   // 4. Set up sandbox
   queries.updatePRStatus(pr.id, "cloning");
@@ -167,9 +173,20 @@ export async function handleNewReview(
     queries.updatePRToolStatus(pr.id, toolStatus);
     queries.updatePRStatus(pr.id, "done");
     queries.insertEvent(pr.id, "done", "Review complete");
+
+    // Clean up worktree
+    const barePath = getBareRepoPath(metadata.repo, dataDir);
+    await removeWorktree(worktreePath, barePath);
   } catch (err: any) {
     queries.updatePRStatus(pr.id, "error");
     queries.insertEvent(pr.id, "error", err.message);
+
+    // Best-effort worktree cleanup on error
+    try {
+      const barePath = getBareRepoPath(metadata.repo, dataDir);
+      const worktreePath = getWorktreePath(metadata.repo, metadata.number, dataDir);
+      await removeWorktree(worktreePath, barePath);
+    } catch {}
   }
 }
 

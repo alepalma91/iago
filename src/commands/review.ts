@@ -2,7 +2,7 @@ import { loadConfig, getDataDir, loadRepoConfig, mergeConfigs } from "../core/co
 import { createDatabase } from "../db/database.js";
 import { createQueries } from "../db/queries.js";
 import { enrichPR } from "../core/poller.js";
-import { ensureReferenceRepo, createWorktree, generateDiff, getOutputPath } from "../core/sandbox.js";
+import { ensureReferenceRepo, createWorktree, generateDiff, getOutputPath, removeWorktree, getBareRepoPath } from "../core/sandbox.js";
 import { launchAllTools, writeOutput } from "../core/launcher.js";
 import { assemblePrompt, loadPromptFile } from "../core/prompt.js";
 import { join } from "path";
@@ -58,7 +58,7 @@ export async function reviewCommand(args: string[]): Promise<void> {
 
   // Check if already tracked
   const existing = queries.getPRByRepoAndNumber(metadata.repo, metadata.number);
-  if (existing && existing.status === "done") {
+  if (existing && existing.status === "done" && !args.includes("--force")) {
     console.log(`\n  Already reviewed (status: ${existing.status}). Use --force to re-review.`);
     db.close();
     return;
@@ -144,6 +144,8 @@ export async function reviewCommand(args: string[]): Promise<void> {
   const enabledTools = getEnabledTools(mergedConfig);
   if (enabledTools.length === 0) {
     console.error("  No review tools enabled in config.");
+    const barePath = getBareRepoPath(metadata.repo, dataDir);
+    await removeWorktree(worktreePath, barePath);
     db.close();
     process.exit(1);
   }
@@ -205,6 +207,12 @@ export async function reviewCommand(args: string[]): Promise<void> {
   queries.insertEvent(pr.id, "done", "Review complete");
 
   console.log(`\n  Output saved to: ${outputDir}`);
+
+  // Clean up worktree
+  console.log("  Cleaning up worktree...");
+  const barePath = getBareRepoPath(metadata.repo, dataDir);
+  await removeWorktree(worktreePath, barePath);
+
   console.log("  Done!");
   db.close();
 }
