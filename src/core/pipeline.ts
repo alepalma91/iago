@@ -5,7 +5,7 @@ import { sendPRNotification, openInBrowser } from "./notifier.js";
 import { ensureReferenceRepo, createWorktree, generateDiff, getOutputPath } from "./sandbox.js";
 import { launchAllTools, writeOutput } from "./launcher.js";
 import { assemblePrompt, loadPromptFile } from "./prompt.js";
-import { getDataDir } from "./config.js";
+import { getDataDir, loadRepoConfig, mergeConfigs } from "./config.js";
 import type { LauncherProfile } from "../types/index.js";
 
 export interface PipelineContext {
@@ -90,18 +90,22 @@ export async function handleNewReview(
       dataDir
     );
 
-    // 5. Generate diff
+    // 5. Merge repo-level config
+    const repoConfig = loadRepoConfig(worktreePath);
+    const mergedConfig = mergeConfigs(config, repoConfig);
+
+    // 6. Generate diff
     const diff = await generateDiff(worktreePath, metadata.base_branch);
 
-    // 6. Assemble prompt
-    const systemPrompt = config.prompts.system_prompt
-      ? loadPromptFile(config.prompts.system_prompt)
+    // 7. Assemble prompt
+    const systemPrompt = mergedConfig.prompts.system_prompt
+      ? loadPromptFile(mergedConfig.prompts.system_prompt)
       : undefined;
-    const instructions = config.prompts.instructions
-      ? loadPromptFile(config.prompts.instructions)
+    const instructions = mergedConfig.prompts.instructions
+      ? loadPromptFile(mergedConfig.prompts.instructions)
       : undefined;
 
-    const techniques = loadTechniques(config);
+    const techniques = loadTechniques(mergedConfig);
 
     const prompt = assemblePrompt({
       metadata,
@@ -111,11 +115,11 @@ export async function handleNewReview(
       techniques,
     });
 
-    // 7. Launch review tools
+    // 8. Launch review tools
     queries.updatePRStatus(pr.id, "reviewing");
     queries.insertEvent(pr.id, "reviewing", "Launching review tools");
 
-    const enabledTools = getEnabledTools(config);
+    const enabledTools = getEnabledTools(mergedConfig);
     const variables: Record<string, string> = {
       prompt,
       diff_file: `${worktreePath}/pr.diff`,
@@ -138,7 +142,7 @@ export async function handleNewReview(
       enabledTools,
       variables,
       worktreePath,
-      config.launchers.max_parallel
+      mergedConfig.launchers.max_parallel
     );
 
     // 8. Save outputs

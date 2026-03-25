@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { DEFAULT_CONFIG, loadConfig, resolveHome, getDataDir } from "../../src/core/config.js";
+import { DEFAULT_CONFIG, loadConfig, resolveHome, getDataDir, loadRepoConfig, mergeConfigs } from "../../src/core/config.js";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -65,5 +65,85 @@ launchers:
   it("should get data directory from config", () => {
     const dir = getDataDir();
     expect(dir).toBe(join(homedir(), ".local/share/the-reviewer"));
+  });
+});
+
+describe("loadRepoConfig", () => {
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it("should return empty object when no repo config exists", () => {
+    const result = loadRepoConfig(TEST_DIR);
+    expect(result).toEqual({});
+  });
+
+  it("should load repo config from .the-reviewer/config.yaml", () => {
+    const configDir = join(TEST_DIR, ".the-reviewer");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.yaml"),
+      `launchers:\n  default_tools:\n    - "gemini"\n`
+    );
+
+    const result = loadRepoConfig(TEST_DIR);
+    expect(result.launchers?.default_tools).toEqual(["gemini"]);
+  });
+
+  it("should return empty object on invalid YAML", () => {
+    const configDir = join(TEST_DIR, ".the-reviewer");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), "");
+
+    const result = loadRepoConfig(TEST_DIR);
+    expect(result).toEqual({});
+  });
+});
+
+describe("mergeConfigs", () => {
+  it("should return global config unchanged when repo config is empty", () => {
+    const global = { ...DEFAULT_CONFIG };
+    const result = mergeConfigs(global, {});
+    expect(result).toEqual(global);
+  });
+
+  it("should override default_tools from repo config", () => {
+    const global = { ...DEFAULT_CONFIG };
+    const repo = { launchers: { default_tools: ["gemini"] } } as any;
+    const result = mergeConfigs(global, repo);
+    expect(result.launchers.default_tools).toEqual(["gemini"]);
+    // Other launcher settings preserved
+    expect(result.launchers.max_parallel).toBe(3);
+  });
+
+  it("should add technique from repo config", () => {
+    const global = { ...DEFAULT_CONFIG };
+    const repo = {
+      prompts: {
+        default_techniques: ["security"],
+        techniques: {
+          security: {
+            description: "Security focused",
+            prompt_file: "~/prompts/security.md",
+          },
+        },
+      },
+    } as any;
+    const result = mergeConfigs(global, repo);
+    expect(result.prompts.default_techniques).toEqual(["security"]);
+    expect(result.prompts.techniques.security).toBeDefined();
+  });
+
+  it("should preserve non-overridden sections", () => {
+    const global = { ...DEFAULT_CONFIG };
+    const repo = { github: { poll_interval: "120s" } } as any;
+    const result = mergeConfigs(global, repo);
+    expect(result.github.poll_interval).toBe("120s");
+    expect(result.sandbox.strategy).toBe("worktree");
+    expect(result.notifications.native).toBe(true);
   });
 });

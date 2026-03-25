@@ -1,4 +1,4 @@
-import { loadConfig, getDataDir } from "../core/config.js";
+import { loadConfig, getDataDir, loadRepoConfig, mergeConfigs } from "../core/config.js";
 import { createDatabase } from "../db/database.js";
 import { createQueries } from "../db/queries.js";
 import { enrichPR } from "../core/poller.js";
@@ -109,6 +109,10 @@ export async function reviewCommand(args: string[]): Promise<void> {
 
   console.log(`  Worktree: ${worktreePath}`);
 
+  // Merge repo-level config
+  const repoConfig = loadRepoConfig(worktreePath);
+  const mergedConfig = mergeConfigs(config, repoConfig);
+
   // Generate diff
   console.log("  Generating diff...");
   const diff = await generateDiff(worktreePath, metadata.base_branch);
@@ -119,14 +123,14 @@ export async function reviewCommand(args: string[]): Promise<void> {
   }
 
   // Assemble prompt
-  const systemPrompt = config.prompts.system_prompt
-    ? loadPromptFile(config.prompts.system_prompt)
+  const systemPrompt = mergedConfig.prompts.system_prompt
+    ? loadPromptFile(mergedConfig.prompts.system_prompt)
     : undefined;
-  const instructions = config.prompts.instructions
-    ? loadPromptFile(config.prompts.instructions)
+  const instructions = mergedConfig.prompts.instructions
+    ? loadPromptFile(mergedConfig.prompts.instructions)
     : undefined;
 
-  const techniques = loadTechniques(config);
+  const techniques = loadTechniques(mergedConfig);
 
   const prompt = assemblePrompt({
     metadata,
@@ -137,7 +141,7 @@ export async function reviewCommand(args: string[]): Promise<void> {
   });
 
   // Launch tools
-  const enabledTools = getEnabledTools(config);
+  const enabledTools = getEnabledTools(mergedConfig);
   if (enabledTools.length === 0) {
     console.error("  No review tools enabled in config.");
     db.close();
@@ -169,7 +173,7 @@ export async function reviewCommand(args: string[]): Promise<void> {
     enabledTools,
     variables,
     worktreePath,
-    config.launchers.max_parallel
+    mergedConfig.launchers.max_parallel
   );
 
   // Save outputs

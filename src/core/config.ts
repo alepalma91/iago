@@ -83,7 +83,27 @@ export function loadConfig(path?: string): AppConfig {
   return deepMerge(DEFAULT_CONFIG, parsed) as AppConfig;
 }
 
-function deepMerge(target: Record<string, any>, source: Record<string, any>): Record<string, any> {
+export function loadRepoConfig(worktreePath: string): Partial<AppConfig> {
+  const repoConfigPath = join(worktreePath, ".the-reviewer", "config.yaml");
+  if (!existsSync(repoConfigPath)) {
+    return {};
+  }
+  try {
+    const raw = readFileSync(repoConfigPath, "utf-8");
+    return (parseYAML(raw) as Partial<AppConfig>) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export function mergeConfigs(global: AppConfig, repo: Partial<AppConfig>): AppConfig {
+  if (!repo || Object.keys(repo).length === 0) {
+    return global;
+  }
+  return deepMerge(global, repo) as AppConfig;
+}
+
+export function deepMerge(target: Record<string, any>, source: Record<string, any>): Record<string, any> {
   const result = { ...target };
 
   for (const key of Object.keys(source)) {
