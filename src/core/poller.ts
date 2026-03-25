@@ -188,6 +188,72 @@ export function parseGraphQLResponse(raw: string, repo: string): PRMetadata | nu
   };
 }
 
+export async function fetchPendingReviews(sinceHours: number = 8): Promise<PRMetadata[]> {
+  const since = new Date(Date.now() - sinceHours * 3600_000).toISOString();
+
+  const query = `query($searchQuery: String!, $first: Int!) {
+    search(query: $searchQuery, type: ISSUE, first: $first) {
+      nodes {
+        ... on PullRequest {
+          number
+          title
+          author { login }
+          url
+          headRefName
+          baseRefName
+          additions
+          deletions
+          changedFiles
+          body
+          repository { nameWithOwner }
+          createdAt
+          updatedAt
+        }
+      }
+    }
+  }`;
+
+  const searchQuery = `type:pr review-requested:@me is:open -is:draft updated:>=${since}`;
+
+  const proc = Bun.spawn(
+    [
+      "gh", "api", "graphql",
+      "-f", `query=${query}`,
+      "-f", `searchQuery=${searchQuery}`,
+      "-F", "first=20",
+    ],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+
+  const stdout = await new Response(proc.stdout).text();
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0) return [];
+
+  try {
+    const data = JSON.parse(stdout);
+    const nodes = data?.data?.search?.nodes ?? [];
+
+    return nodes
+      .filter((pr: any) => pr.number) // filter out empty nodes
+      .map((pr: any): PRMetadata => ({
+        number: pr.number,
+        title: pr.title,
+        author: pr.author?.login ?? "unknown",
+        url: pr.url,
+        branch: pr.headRefName,
+        base_branch: pr.baseRefName,
+        repo: pr.repository.nameWithOwner,
+        additions: pr.additions ?? 0,
+        deletions: pr.deletions ?? 0,
+        changed_files: pr.changedFiles ?? 0,
+        body: pr.body ?? null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 export async function checkGhAuth(): Promise<boolean> {
   const proc = Bun.spawn(["gh", "auth", "status"], {
     stdout: "pipe",

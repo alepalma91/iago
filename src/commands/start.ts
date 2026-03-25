@@ -1,8 +1,9 @@
 import { loadConfig, getDataDir } from "../core/config.js";
 import { createDatabase } from "../db/database.js";
 import { createQueries } from "../db/queries.js";
-import { pollNotifications, enrichPR, createInitialPollState, checkGhAuth } from "../core/poller.js";
+import { pollNotifications, enrichPR, fetchPendingReviews, createInitialPollState, checkGhAuth } from "../core/poller.js";
 import { handleNewReview } from "../core/pipeline.js";
+import { sendPRNotification } from "../core/notifier.js";
 import { writePidFile, removePidFile } from "../core/pid.js";
 import { join } from "path";
 import { mkdirSync } from "fs";
@@ -51,7 +52,78 @@ export async function startCommand(_args: string[]): Promise<void> {
   console.log(`  Max parallel: ${config.launchers.max_parallel}`);
   console.log(`  Data dir: ${dataDir}`);
   console.log("");
-  console.log("Polling for PR review requests... (Ctrl+C to stop)");
+  // Catch-up: check for pending review requests from the last 8 hours
+  console.log("Checking for pending review requests...");
+  try {
+    const pending = await fetchPendingReviews(8);
+    if (pending.length > 0) {
+      console.log(`  Found ${pending.length} pending PR(s) awaiting your review:`);
+      for (const pr of pending) {
+        const existing = queries.getPRByRepoAndNumber(pr.repo, pr.number);
+        const status = existing ? ` (already tracked: ${existing.status})` : "";
+        console.log(`    - ${pr.repo}#${pr.number}: ${pr.title} by @${pr.author}${status}`);
+      }
+      console.log("");
+
+      // Send notification for each new PR (one at a time)
+      const newPRs = pending.filter(
+        (pr) => !queries.getPRByRepoAndNumber(pr.repo, pr.number)
+      );
+
+      if (newPRs.length > 0) {
+        console.log(`  Sending notifications for ${newPRs.length} new PR(s)...\n`);
+        for (const pr of newPRs) {
+          // Register in DB
+          const row = queries.insertPR({
+            pr_number: pr.number,
+            repo: pr.repo,
+            title: pr.title,
+            author: pr.author,
+            url: pr.url,
+            branch: pr.branch,
+            base_branch: pr.base_branch,
+          });
+          queries.insertEvent(row.id, "detected", "Found during startup catch-up");
+          queries.updatePRStatus(row.id, "notified");
+
+          // Send macOS notification
+          console.log(`  [notify] ${pr.repo}#${pr.number}: ${pr.title}`);
+          try {
+            const action = await sendPRNotification({
+              repo: pr.repo,
+              pr_number: pr.number,
+              title: pr.title,
+              author: pr.author,
+              url: pr.url,
+            });
+            console.log(`  [action] ${pr.repo}#${pr.number}: ${action}`);
+            queries.insertEvent(row.id, "user_action", `User action: ${action}`);
+
+            if (action === "accept") {
+              queries.updatePRStatus(row.id, "accepted");
+              console.log(`  Use: make review PR=${pr.url}`);
+            } else if (action === "dismiss" || action === "timeout" || action === "snooze") {
+              queries.updatePRStatus(row.id, "dismissed");
+            } else if (action === "view") {
+              const { openInBrowser } = await import("../core/notifier.js");
+              await openInBrowser(pr.url);
+              queries.updatePRStatus(row.id, "dismissed");
+            }
+          } catch {
+            // alerter not available — register and let user pick
+            console.log(`  [skip] No alerter — registered for manual review`);
+            console.log(`    make review PR=${pr.url}`);
+          }
+        }
+      }
+    } else {
+      console.log("  No pending reviews found.");
+    }
+  } catch (err: any) {
+    console.error(`  Catch-up check failed: ${err.message}`);
+  }
+
+  console.log("\nPolling for PR review requests... (Ctrl+C to stop)");
 
   // Graceful shutdown
   const shutdown = () => {
@@ -77,8 +149,11 @@ export async function startCommand(_args: string[]): Promise<void> {
       }
       pollState.pollInterval = result.pollInterval;
 
+      const ts = new Date().toLocaleTimeString();
       if (result.statusCode === 304) {
-        // No new notifications
+        process.stdout.write(`\r  [${ts}] Polling... 304 Not Modified (no new notifications)`);
+      } else if (result.notifications.length === 0) {
+        process.stdout.write(`\r  [${ts}] Polling... 200 OK (0 review requests)          `);
       } else if (result.notifications.length > 0) {
         console.log(`[${new Date().toISOString()}] Found ${result.notifications.length} review request(s)`);
 

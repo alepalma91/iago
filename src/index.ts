@@ -3,6 +3,7 @@
 import { startCommand } from "./commands/start.js";
 import { stopCommand } from "./commands/stop.js";
 import { statusCommand } from "./commands/status.js";
+import { reviewCommand } from "./commands/review.js";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -17,6 +18,9 @@ async function main() {
       break;
     case "status":
       await statusCommand();
+      break;
+    case "review":
+      await reviewCommand(args.slice(1));
       break;
     case "help":
     case "--help":
@@ -39,6 +43,7 @@ Usage:
   the-reviewer start     Start the daemon (poll for PR reviews)
   the-reviewer stop      Stop the running daemon
   the-reviewer status    Show active PR reviews
+  the-reviewer review    Manually review a PR by URL
   the-reviewer help      Show this help message`);
 }
 
