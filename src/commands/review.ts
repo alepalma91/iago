@@ -126,11 +126,14 @@ export async function reviewCommand(args: string[]): Promise<void> {
     ? loadPromptFile(config.prompts.instructions)
     : undefined;
 
+  const techniques = loadTechniques(config);
+
   const prompt = assemblePrompt({
     metadata,
     diff,
     systemPrompt: systemPrompt || undefined,
     instructions: instructions || undefined,
+    techniques,
   });
 
   // Launch tools
@@ -206,4 +209,14 @@ function getEnabledTools(config: ReturnType<typeof loadConfig>): LauncherProfile
   return config.launchers.default_tools
     .map((name) => config.launchers.tools[name])
     .filter((tool): tool is LauncherProfile => !!tool && tool.enabled);
+}
+
+function loadTechniques(config: ReturnType<typeof loadConfig>): string[] {
+  return config.prompts.default_techniques
+    .map((name) => {
+      const technique = config.prompts.techniques[name];
+      if (!technique) return "";
+      return loadPromptFile(technique.prompt_file);
+    })
+    .filter((content) => content.length > 0);
 }

@@ -109,4 +109,56 @@ describe("assemblePrompt", () => {
     });
     expect(result).toContain("Only check for SQL injection.");
   });
+
+  it("should include techniques as additional focus areas", () => {
+    const result = assemblePrompt({
+      metadata: sampleMetadata,
+      diff: sampleDiff,
+      techniques: ["Check for memory leaks in closures."],
+    });
+    expect(result).toContain("## Additional Focus Areas");
+    expect(result).toContain("Check for memory leaks in closures.");
+  });
+
+  it("should skip techniques section when empty", () => {
+    const result = assemblePrompt({
+      metadata: sampleMetadata,
+      diff: sampleDiff,
+      techniques: [],
+    });
+    expect(result).not.toContain("## Additional Focus Areas");
+  });
+
+  it("should skip whitespace-only techniques", () => {
+    const result = assemblePrompt({
+      metadata: sampleMetadata,
+      diff: sampleDiff,
+      techniques: ["  ", ""],
+    });
+    expect(result).not.toContain("## Additional Focus Areas");
+  });
+
+  it("should concatenate multiple techniques", () => {
+    const result = assemblePrompt({
+      metadata: sampleMetadata,
+      diff: sampleDiff,
+      techniques: ["Focus on security.", "Check for race conditions."],
+    });
+    expect(result).toContain("## Additional Focus Areas");
+    expect(result).toContain("Focus on security.");
+    expect(result).toContain("Check for race conditions.");
+  });
+
+  it("should place techniques between instructions and PR metadata", () => {
+    const result = assemblePrompt({
+      metadata: sampleMetadata,
+      diff: sampleDiff,
+      techniques: ["Check concurrency."],
+    });
+    const instructionsIdx = result.indexOf("## Review Instructions");
+    const techniquesIdx = result.indexOf("## Additional Focus Areas");
+    const prIdx = result.indexOf("## Pull Request");
+    expect(instructionsIdx).toBeLessThan(techniquesIdx);
+    expect(techniquesIdx).toBeLessThan(prIdx);
+  });
 });

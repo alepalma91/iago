@@ -38,17 +38,30 @@ export interface PromptContext {
   diff: string;
   systemPrompt?: string;
   instructions?: string;
+  techniques?: string[];
 }
 
 export function assemblePrompt(ctx: PromptContext): string {
   const systemPrompt = ctx.systemPrompt || getDefaultSystemPrompt();
   const instructions = ctx.instructions || getDefaultInstructions();
 
+  const techniques = (ctx.techniques || []).filter((t) => t.trim().length > 0);
+
   const parts: string[] = [
     systemPrompt,
     "",
     "## Review Instructions",
     instructions,
+  ];
+
+  if (techniques.length > 0) {
+    parts.push("", "## Additional Focus Areas");
+    for (const technique of techniques) {
+      parts.push("", technique);
+    }
+  }
+
+  parts.push(
     "",
     "## Pull Request",
     `**Title**: ${ctx.metadata.title}`,
@@ -59,8 +72,8 @@ export function assemblePrompt(ctx: PromptContext): string {
     "### Diff",
     "```diff",
     ctx.diff,
-    "```",
-  ];
+    "```"
+  );
 
   return parts.join("\n");
 }
