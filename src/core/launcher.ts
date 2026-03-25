@@ -46,6 +46,8 @@ export async function launchTool(
   const timeoutMs = parseTimeout(profile.timeout);
 
   const env: Record<string, string> = { ...process.env as Record<string, string> };
+  // Allow nested Claude Code sessions when launching claude as a review tool
+  delete env.CLAUDECODE;
   if (profile.env) {
     Object.assign(env, profile.env);
   }
