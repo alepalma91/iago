@@ -1,4 +1,4 @@
-.PHONY: start stop status review config-init test test-watch install help
+.PHONY: start stop status review config-init config-validate config-show test test-watch install help
 
 BUN := bun
 CLI := $(BUN) run src/index.ts
@@ -25,6 +25,12 @@ review: ## Manually review a PR (usage: make review PR=https://github.com/org/re
 
 config-init: ## Initialize default config files
 	$(CLI) config init
+
+config-validate: ## Check config for errors
+	$(CLI) config validate
+
+config-show: ## Print resolved config
+	$(CLI) config show
 
 test: ## Run all tests
 	$(BUN) test
