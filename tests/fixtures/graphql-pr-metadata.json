@@ -1,0 +1,18 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "number": 42,
+        "title": "feat: add user authentication flow",
+        "author": { "login": "jsmith" },
+        "url": "https://github.com/acme/webapp/pull/42",
+        "headRefName": "feat/auth-flow",
+        "baseRefName": "main",
+        "additions": 342,
+        "deletions": 15,
+        "changedFiles": 8,
+        "body": "## Summary\nAdds OAuth2 authentication with JWT tokens.\n\n## Changes\n- Login/logout endpoints\n- JWT middleware\n- User session management"
+      }
+    }
+  }
+}

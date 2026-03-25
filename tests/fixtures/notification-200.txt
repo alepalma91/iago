@@ -1,0 +1,55 @@
+HTTP/2.0 200 OK
+Date: Thu, 20 Mar 2025 10:00:00 GMT
+Content-Type: application/json; charset=utf-8
+Last-Modified: Thu, 20 Mar 2025 09:55:00 GMT
+X-Poll-Interval: 60
+X-RateLimit-Limit: 5000
+X-RateLimit-Remaining: 4997
+
+[
+  {
+    "id": "101",
+    "reason": "review_requested",
+    "subject": {
+      "title": "feat: add user authentication flow",
+      "url": "https://api.github.com/repos/acme/webapp/pulls/42",
+      "type": "PullRequest"
+    },
+    "repository": {
+      "full_name": "acme/webapp",
+      "html_url": "https://github.com/acme/webapp"
+    },
+    "updated_at": "2025-03-20T09:50:00Z",
+    "url": "https://api.github.com/notifications/threads/101"
+  },
+  {
+    "id": "102",
+    "reason": "mention",
+    "subject": {
+      "title": "bug: login page crashes on mobile",
+      "url": "https://api.github.com/repos/acme/webapp/issues/38",
+      "type": "Issue"
+    },
+    "repository": {
+      "full_name": "acme/webapp",
+      "html_url": "https://github.com/acme/webapp"
+    },
+    "updated_at": "2025-03-20T09:45:00Z",
+    "url": "https://api.github.com/notifications/threads/102"
+  },
+  {
+    "id": "103",
+    "reason": "review_requested",
+    "subject": {
+      "title": "refactor: extract database module",
+      "url": "https://api.github.com/repos/acme/api-server/pulls/17",
+      "type": "PullRequest"
+    },
+    "repository": {
+      "full_name": "acme/api-server",
+      "html_url": "https://github.com/acme/api-server"
+    },
+    "updated_at": "2025-03-20T09:30:00Z",
+    "url": "https://api.github.com/notifications/threads/103"
+  }
+]

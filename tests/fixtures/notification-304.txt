@@ -1,0 +1,6 @@
+HTTP/2.0 304 Not Modified
+Date: Thu, 20 Mar 2025 10:01:00 GMT
+X-Poll-Interval: 60
+X-RateLimit-Limit: 5000
+X-RateLimit-Remaining: 4999
+
