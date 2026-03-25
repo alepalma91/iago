@@ -5,6 +5,7 @@ import { pollNotifications, enrichPR, fetchPendingReviews, createInitialPollStat
 import { handleNewReview } from "../core/pipeline.js";
 import { sendPRNotification } from "../core/notifier.js";
 import { writePidFile, removePidFile } from "../core/pid.js";
+import { createDashboardServer } from "../core/dashboard.js";
 import { join } from "path";
 import { mkdirSync } from "fs";
 
@@ -123,11 +124,27 @@ export async function startCommand(_args: string[]): Promise<void> {
     console.error(`  Catch-up check failed: ${err.message}`);
   }
 
+  // Start dashboard if enabled
+  let dashboardServer: ReturnType<typeof createDashboardServer> | null = null;
+  if (config.dashboard.enabled) {
+    dashboardServer = createDashboardServer(db, config);
+    const dashboardUrl = `http://localhost:${dashboardServer.server.port}`;
+    console.log(`Dashboard: ${dashboardUrl}`);
+    if (config.dashboard.auto_open) {
+      try {
+        Bun.spawn(["open", dashboardUrl]);
+      } catch {}
+    }
+  }
+
   console.log("\nPolling for PR review requests... (Ctrl+C to stop)");
 
   // Graceful shutdown
   const shutdown = () => {
     console.log("\nthe-reviewer: shutting down...");
+    if (dashboardServer) {
+      dashboardServer.stop();
+    }
     removePidFile();
     db.close();
     process.exit(0);
