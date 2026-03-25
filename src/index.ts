@@ -6,6 +6,7 @@ import { statusCommand } from "./commands/status.js";
 import { reviewCommand } from "./commands/review.js";
 import { configCommand } from "./commands/config.js";
 import { dashboardCommand } from "./commands/dashboard.js";
+import { mcpCommand } from "./commands/mcp.js";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -29,6 +30,9 @@ async function main() {
       break;
     case "dashboard":
       await dashboardCommand(args.slice(1));
+      break;
+    case "mcp":
+      await mcpCommand();
       break;
     case "help":
     case "--help":
@@ -54,6 +58,7 @@ Usage:
   the-reviewer review    Manually review a PR by URL
   the-reviewer config    Manage configuration (init, validate, show)
   the-reviewer dashboard Start the dashboard server
+  the-reviewer mcp       Start the MCP server (stdio transport)
   the-reviewer help      Show this help message`);
 }
 

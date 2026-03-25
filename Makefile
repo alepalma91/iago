@@ -1,4 +1,4 @@
-.PHONY: start stop status review dashboard config-init config-validate config-show test test-watch install help
+.PHONY: start stop status review dashboard mcp dev config-init config-validate config-show test test-watch install help
 
 BUN := bun
 CLI := $(BUN) run src/index.ts
@@ -23,8 +23,14 @@ review: ## Manually review a PR (usage: make review PR=https://github.com/org/re
 	@echo "Triggering manual review for $(PR)..."
 	$(CLI) review $(PR)
 
-dashboard: ## Start the dashboard server
+dashboard: ## Start the dashboard server (standalone)
 	$(CLI) dashboard
+
+mcp: ## Start the MCP server (stdio transport)
+	$(CLI) mcp
+
+dev: ## Start daemon + dashboard together
+	$(CLI) start
 
 config-init: ## Initialize default config files
 	$(CLI) config init
