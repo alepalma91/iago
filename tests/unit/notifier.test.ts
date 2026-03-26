@@ -81,3 +81,6 @@ describe("handleNotificationAction", () => {
     expect(handleNotificationAction(response)).toBe("timeout");
   });
 });
+
+// Note: sendReviewCompleteNotification and sendReviewErrorNotification
+// spawn OS-level notifications and are tested manually, not in unit tests.

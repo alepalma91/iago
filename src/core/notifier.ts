@@ -94,3 +94,60 @@ export async function openInBrowser(url: string): Promise<void> {
   });
   await proc.exited;
 }
+
+export async function sendSimpleNotification(
+  title: string,
+  subtitle: string,
+  message: string,
+  sound: string = "Glass",
+): Promise<void> {
+  const hasAlerter = await checkAlerterAvailable();
+
+  if (hasAlerter) {
+    const proc = Bun.spawn(
+      [
+        "alerter",
+        "--title", title,
+        "--subtitle", subtitle,
+        "--message", message,
+        "--sender", "com.apple.ScriptEditor2",
+        "--sound", sound,
+        "--timeout", "15",
+        "--group", "pr-reviews",
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    await proc.exited;
+  } else {
+    // Fallback: osascript (always available on macOS)
+    const script = `display notification "${escapeAppleScript(message)}" with title "${escapeAppleScript(title)}" subtitle "${escapeAppleScript(subtitle)}" sound name "${sound}"`;
+    const proc = Bun.spawn(["osascript", "-e", script], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await proc.exited;
+  }
+}
+
+function escapeAppleScript(str: string): string {
+  return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+export async function sendReviewCompleteNotification(pr: PRNotificationInfo): Promise<void> {
+  await sendSimpleNotification(
+    "Review Complete",
+    `${pr.repo} #${pr.pr_number}`,
+    `${pr.title} — review finished`,
+    "Glass",
+  );
+}
+
+export async function sendReviewErrorNotification(pr: PRNotificationInfo, error: string): Promise<void> {
+  const shortError = error.length > 80 ? error.slice(0, 77) + "..." : error;
+  await sendSimpleNotification(
+    "Review Failed",
+    `${pr.repo} #${pr.pr_number}`,
+    `${pr.title} — ${shortError}`,
+    "Basso",
+  );
+}

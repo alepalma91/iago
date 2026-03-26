@@ -25,12 +25,15 @@ export const DEFAULT_CONFIG: AppConfig = {
       claude: {
         display_name: "Claude Code",
         command: "claude",
-        args: ["-p", "{{prompt}}", "--output-format", "text"],
+        args: ["--dangerously-skip-permissions", "-p", "{{prompt}}", "--output-format", "text"],
         stdin_mode: "none",
         output_mode: "stdout",
         timeout: "5m",
         enabled: true,
-        env: { CLAUDE_CODE_HEADLESS: "1" },
+        env: {
+          CLAUDE_CODE_HEADLESS: "1",
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+        },
       },
     },
   },
@@ -49,7 +52,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   dashboard: {
     enabled: true,
-    port: 3847,
+    port: 1460,
     auto_open: false,
   },
 };

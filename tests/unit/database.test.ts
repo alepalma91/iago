@@ -80,14 +80,14 @@ describe("createDatabase", () => {
     db1.close();
     const db2 = createDatabase(TEST_DB);
     const row = db2.query("SELECT version FROM schema_version LIMIT 1").get() as { version: number };
-    expect(row.version).toBe(1);
+    expect(row.version).toBe(2);
     db2.close();
   });
 
-  it("should set schema_version to 1", () => {
+  it("should set schema_version to 2", () => {
     const db = createDatabase(TEST_DB);
     const row = db.query("SELECT version FROM schema_version LIMIT 1").get() as { version: number };
-    expect(row.version).toBe(1);
+    expect(row.version).toBe(2);
     db.close();
   });
 });

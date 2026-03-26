@@ -20,6 +20,7 @@ export interface PRReview {
   status: PRStatus;
   tool_status: Record<string, string> | null;
   worktree_path: string | null;
+  opened_at: string | null;
   created_at: string;
   updated_at: string;
 }

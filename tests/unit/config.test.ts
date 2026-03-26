@@ -20,7 +20,7 @@ describe("config", () => {
     expect(DEFAULT_CONFIG.sandbox.strategy).toBe("worktree");
     expect(DEFAULT_CONFIG.launchers.max_parallel).toBe(3);
     expect(DEFAULT_CONFIG.notifications.native).toBe(true);
-    expect(DEFAULT_CONFIG.dashboard.port).toBe(3847);
+    expect(DEFAULT_CONFIG.dashboard.port).toBe(1460);
   });
 
   it("should have claude enabled by default", () => {

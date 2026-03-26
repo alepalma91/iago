@@ -7,7 +7,19 @@ export function getDefaultSystemPrompt(): string {
 }
 
 export function getDefaultInstructions(): string {
-  return `Review the following pull request diff. For each issue found:
+  return `Review the following pull request diff.
+
+IMPORTANT: Post your review as real GitHub PR review comments using the \`gh\` CLI, exactly as a human reviewer would. Use:
+- \`gh pr review <number> --repo <owner/repo> --comment --body "<summary>"\` for the overall review comment
+- \`gh pr review <number> --repo <owner/repo> --request-changes --body "<summary>"\` if there are critical issues
+- \`gh pr review <number> --repo <owner/repo> --approve --body "<summary>"\` if the PR looks good
+
+For inline file comments, use:
+- \`gh api repos/<owner/repo>/pulls/<number>/comments -f body="<comment>" -f path="<file>" -f commit_id="$(gh pr view <number> --repo <owner/repo> --json headRefOid -q .headRefOid)" -f side=RIGHT -F line=<line>\`
+
+Each comment should be actionable and resolvable. Write comments the way a senior engineer would — clear, specific, and constructive.
+
+For each issue found:
 1. State the severity: CRITICAL, WARNING, or SUGGESTION
 2. Reference the specific file and line(s)
 3. Explain the issue clearly

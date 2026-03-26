@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { Queries } from "../db/queries.js";
 import type { PRMetadata, AppConfig, NotificationAction } from "../types/index.js";
-import { sendPRNotification, openInBrowser } from "./notifier.js";
+import { sendPRNotification, openInBrowser, sendReviewCompleteNotification, sendReviewErrorNotification } from "./notifier.js";
 import { ensureReferenceRepo, createWorktree, generateDiff, getOutputPath, removeWorktree, getBareRepoPath, getWorktreePath } from "./sandbox.js";
 import { launchAllTools, writeOutput } from "./launcher.js";
 import { assemblePrompt, loadPromptFile } from "./prompt.js";
@@ -174,12 +174,33 @@ export async function handleNewReview(
     queries.updatePRStatus(pr.id, "done");
     queries.insertEvent(pr.id, "done", "Review complete");
 
+    // Notify user that review is done
+    sendReviewCompleteNotification({
+      repo: metadata.repo,
+      pr_number: metadata.number,
+      title: metadata.title,
+      author: metadata.author,
+      url: metadata.url,
+    }).catch(() => {}); // best-effort
+
     // Clean up worktree
     const barePath = getBareRepoPath(metadata.repo, dataDir);
     await removeWorktree(worktreePath, barePath);
   } catch (err: any) {
     queries.updatePRStatus(pr.id, "error");
     queries.insertEvent(pr.id, "error", err.message);
+
+    // Notify user of error
+    sendReviewErrorNotification(
+      {
+        repo: metadata.repo,
+        pr_number: metadata.number,
+        title: metadata.title,
+        author: metadata.author,
+        url: metadata.url,
+      },
+      err.message,
+    ).catch(() => {}); // best-effort
 
     // Best-effort worktree cleanup on error
     try {

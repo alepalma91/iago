@@ -193,8 +193,10 @@ export async function startCommand(_args: string[]): Promise<void> {
           const metadata = await enrichPR(notification.subject.url);
           if (!metadata) continue;
 
-          // Run the review pipeline
-          await handleNewReview(metadata, ctx);
+          // Run the review pipeline in background (don't block polling)
+          handleNewReview(metadata, ctx).catch((err) => {
+            console.error(`\n  [error] Review failed for ${metadata.repo}#${metadata.number}: ${err.message}`);
+          });
         }
       }
     } catch (err: any) {

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 export function createDatabase(path: string): Database {
   const db = new Database(path, { create: true });
@@ -65,9 +65,14 @@ function migrate(db: Database): void {
     `);
 
     if (currentVersion === 0 && !row) {
-      db.exec(`INSERT INTO schema_version (version) VALUES (${CURRENT_SCHEMA_VERSION})`);
+      db.exec(`INSERT INTO schema_version (version) VALUES (1)`);
     } else {
-      db.exec(`UPDATE schema_version SET version = ${CURRENT_SCHEMA_VERSION}`);
+      db.exec(`UPDATE schema_version SET version = 1`);
     }
+  }
+
+  if (currentVersion < 2) {
+    db.exec(`ALTER TABLE pr_reviews ADD COLUMN opened_at TEXT`);
+    db.exec(`UPDATE schema_version SET version = 2`);
   }
 }
