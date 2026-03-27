@@ -17,7 +17,7 @@ export function buildAlerterArgs(pr: PRNotificationInfo): string[] {
     "--message",
     `${pr.title} — @${pr.author}`,
     "--actions",
-    "Accept Review,View on GitHub,Snooze",
+    "Launch Review,View on GitHub,Snooze",
     "--close-label",
     "Dismiss",
     "--sender",
@@ -44,7 +44,7 @@ export function handleNotificationAction(response: AlerterResponse): Notificatio
 
   // activationType === "actionClicked" or "contentsClicked"
   switch (response.activationValue) {
-    case "Accept Review":
+    case "Launch Review":
       return "accept";
     case "View on GitHub":
       return "view";
