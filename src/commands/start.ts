@@ -159,52 +159,82 @@ export async function startCommand(_args: string[]): Promise<void> {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 
-  // Poll loop
+  // Poll loop — use GraphQL search to find all open PRs requesting review
   const ctx = { config, queries };
 
   while (true) {
     try {
-      const result = await pollNotifications(pollState);
-
-      // Update state for next poll
-      if (result.lastModified) {
-        pollState.lastModified = result.lastModified;
-      }
-      pollState.pollInterval = result.pollInterval;
-
       const ts = new Date().toLocaleTimeString();
-      if (result.statusCode === 304) {
-        process.stdout.write(`\r  [${ts}] Polling... 304 Not Modified (no new notifications)`);
-      } else if (result.notifications.length === 0) {
-        process.stdout.write(`\r  [${ts}] Polling... 200 OK (0 review requests)          `);
-      } else if (result.notifications.length > 0) {
-        console.log(`[${new Date().toISOString()}] Found ${result.notifications.length} review request(s)`);
+      const pending = await fetchPendingReviews(168); // look back 7 days
 
-        for (const notification of result.notifications) {
-          // Check repo filters
-          const repo = notification.repository.full_name;
-          if (config.github.ignored_repos.includes(repo)) continue;
-          if (
-            config.github.watched_repos.length > 0 &&
-            !config.github.watched_repos.includes(repo)
-          ) continue;
+      // Filter to only new PRs not yet tracked
+      const newPRs = pending.filter((pr) => {
+        // Check repo filters
+        if (config.github.ignored_repos.includes(pr.repo)) return false;
+        if (
+          config.github.watched_repos.length > 0 &&
+          !config.github.watched_repos.includes(pr.repo)
+        ) return false;
 
-          // Enrich PR metadata
-          const metadata = await enrichPR(notification.subject.url);
-          if (!metadata) continue;
+        // Skip if already tracked
+        const existing = queries.getPRByRepoAndNumber(pr.repo, pr.number);
+        return !existing;
+      });
 
-          // Run the review pipeline in background (don't block polling)
-          handleNewReview(metadata, ctx).catch((err) => {
-            console.error(`\n  [error] Review failed for ${metadata.repo}#${metadata.number}: ${err.message}`);
+      if (newPRs.length === 0) {
+        process.stdout.write(`\r  [${ts}] Polling... ${pending.length} open PR(s), 0 new          `);
+      } else {
+        console.log(`\n  [${ts}] Found ${newPRs.length} new review request(s)`);
+
+        for (const pr of newPRs) {
+          // Register in DB
+          const row = queries.insertPR({
+            pr_number: pr.number,
+            repo: pr.repo,
+            title: pr.title,
+            author: pr.author,
+            url: pr.url,
+            branch: pr.branch,
+            base_branch: pr.base_branch,
           });
+          queries.insertEvent(row.id, "detected", "Found during poll");
+          queries.updatePRStatus(row.id, "notified");
+
+          // Send macOS notification
+          console.log(`  [notify] ${pr.repo}#${pr.number}: ${pr.title}`);
+          try {
+            const action = await sendPRNotification({
+              repo: pr.repo,
+              pr_number: pr.number,
+              title: pr.title,
+              author: pr.author,
+              url: pr.url,
+            });
+            console.log(`  [action] ${pr.repo}#${pr.number}: ${action}`);
+            queries.insertEvent(row.id, "user_action", `User action: ${action}`);
+
+            if (action === "accept") {
+              queries.updatePRStatus(row.id, "accepted");
+              handleNewReview(pr, ctx).catch((err) => {
+                console.error(`  [error] Review failed for ${pr.repo}#${pr.number}: ${err.message}`);
+              });
+            } else if (action === "dismiss" || action === "timeout" || action === "snooze") {
+              queries.updatePRStatus(row.id, "dismissed");
+            } else if (action === "view") {
+              const { openInBrowser } = await import("../core/notifier.js");
+              await openInBrowser(pr.url);
+              queries.updatePRStatus(row.id, "dismissed");
+            }
+          } catch {
+            console.log(`  [skip] No alerter — registered for manual review`);
+            console.log(`    make review PR=${pr.url}`);
+          }
         }
       }
     } catch (err: any) {
       console.error(`[${new Date().toISOString()}] Poll error: ${err.message}`);
     }
 
-    // Sleep until next poll
-    const sleepMs = Math.max(pollState.pollInterval * 1000, pollIntervalMs);
-    await new Promise((resolve) => setTimeout(resolve, sleepMs));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
 }
