@@ -16,20 +16,12 @@ export function buildAlerterArgs(pr: PRNotificationInfo): string[] {
     `${pr.repo} #${pr.pr_number}`,
     "--message",
     `${pr.title} — @${pr.author}`,
-    "--actions",
-    "Launch Review,View on GitHub,Snooze",
-    "--close-label",
-    "Dismiss",
     "--sender",
     "com.apple.ScriptEditor2",
-    "--ignore-dnd",
     "--sound",
     "Ping",
-    "--timeout",
-    "300",
     "--group",
-    "pr-reviews",
-    "--json",
+    `pr-review-${pr.repo}-${pr.pr_number}`,
   ];
 }
 
@@ -56,22 +48,27 @@ export function handleNotificationAction(response: AlerterResponse): Notificatio
 }
 
 export async function sendPRNotification(pr: PRNotificationInfo): Promise<NotificationAction> {
-  const args = buildAlerterArgs(pr);
+  const hasAlerter = await checkAlerterAvailable();
 
-  const proc = Bun.spawn(["alerter", ...args], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const stdout = await new Response(proc.stdout).text();
-  await proc.exited;
-
-  try {
-    const response = JSON.parse(stdout) as AlerterResponse;
-    return handleNotificationAction(response);
-  } catch {
-    return "dismiss";
+  if (hasAlerter) {
+    // Fire-and-forget: notification stays in Notification Center
+    const args = buildAlerterArgs(pr);
+    Bun.spawn(["alerter", ...args], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+  } else {
+    // Fallback: osascript
+    const msg = `${pr.title} — @${pr.author}`;
+    const script = `display notification "${escapeAppleScript(msg)}" with title "PR Review Request" subtitle "${escapeAppleScript(`${pr.repo} #${pr.pr_number}`)}" sound name "Ping"`;
+    Bun.spawn(["osascript", "-e", script], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
   }
+
+  // Non-blocking: always return "notified" — user acts via menu bar
+  return "notified";
 }
 
 export async function checkAlerterAvailable(): Promise<boolean> {

@@ -3,7 +3,8 @@ export type NotificationAction =
   | "view"
   | "snooze"
   | "dismiss"
-  | "timeout";
+  | "timeout"
+  | "notified";
 
 export interface AlerterResponse {
   activationType: string;

@@ -15,7 +15,8 @@ describe("buildAlerterArgs", () => {
     const args = buildAlerterArgs(samplePR);
     expect(args).toContain("--title");
     expect(args).toContain("PR Review Request");
-    expect(args).toContain("--json");
+    expect(args).toContain("--sound");
+    expect(args).toContain("Ping");
   });
 
   it("should format subtitle as repo #number", () => {
@@ -30,18 +31,18 @@ describe("buildAlerterArgs", () => {
     expect(args[msgIdx + 1]).toBe("feat: add auth — @developer");
   });
 
-  it("should include all action buttons", () => {
+  it("should use per-PR group ID", () => {
     const args = buildAlerterArgs(samplePR);
-    const actionsIdx = args.indexOf("--actions");
-    expect(args[actionsIdx + 1]).toBe("Accept Review,View on GitHub,Snooze");
+    const groupIdx = args.indexOf("--group");
+    expect(args[groupIdx + 1]).toBe("pr-review-owner/repo-42");
   });
 });
 
 describe("handleNotificationAction", () => {
-  it("should map Accept Review to accept", () => {
+  it("should map Launch Review to accept", () => {
     const response: AlerterResponse = {
       activationType: "actionClicked",
-      activationValue: "Accept Review",
+      activationValue: "Launch Review",
       deliveredAt: "2025-03-20T10:00:00Z",
     };
     expect(handleNotificationAction(response)).toBe("accept");
@@ -82,5 +83,4 @@ describe("handleNotificationAction", () => {
   });
 });
 
-// Note: sendReviewCompleteNotification and sendReviewErrorNotification
-// spawn OS-level notifications and are tested manually, not in unit tests.
+// Note: sendPRNotification is fire-and-forget and tested manually.

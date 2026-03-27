@@ -74,7 +74,6 @@ export async function startCommand(_args: string[]): Promise<void> {
       if (newPRs.length > 0) {
         console.log(`  Sending notifications for ${newPRs.length} new PR(s)...\n`);
         for (const pr of newPRs) {
-          // Register in DB
           const row = queries.insertPR({
             pr_number: pr.number,
             repo: pr.repo,
@@ -87,40 +86,14 @@ export async function startCommand(_args: string[]): Promise<void> {
           queries.insertEvent(row.id, "detected", "Found during startup catch-up");
           queries.updatePRStatus(row.id, "notified");
 
-          // Send macOS notification
           console.log(`  [notify] ${pr.repo}#${pr.number}: ${pr.title}`);
-          try {
-            const action = await sendPRNotification({
-              repo: pr.repo,
-              pr_number: pr.number,
-              title: pr.title,
-              author: pr.author,
-              url: pr.url,
-            });
-            console.log(`  [action] ${pr.repo}#${pr.number}: ${action}`);
-            queries.insertEvent(row.id, "user_action", `User action: ${action}`);
-
-            if (action === "accept") {
-              queries.updatePRStatus(row.id, "accepted");
-              // Run review pipeline in background
-              const metadata = await enrichPR(`https://api.github.com/repos/${pr.repo}/pulls/${pr.number}`);
-              if (metadata) {
-                handleNewReview(metadata, { config, queries }).catch((err) => {
-                  console.error(`  [error] Review failed for ${pr.repo}#${pr.number}: ${err.message}`);
-                });
-              }
-            } else if (action === "dismiss" || action === "timeout" || action === "snooze") {
-              queries.updatePRStatus(row.id, "dismissed");
-            } else if (action === "view") {
-              const { openInBrowser } = await import("../core/notifier.js");
-              await openInBrowser(pr.url);
-              queries.updatePRStatus(row.id, "dismissed");
-            }
-          } catch {
-            // alerter not available — register and let user pick
-            console.log(`  [skip] No alerter — registered for manual review`);
-            console.log(`    make review PR=${pr.url}`);
-          }
+          await sendPRNotification({
+            repo: pr.repo,
+            pr_number: pr.number,
+            title: pr.title,
+            author: pr.author,
+            url: pr.url,
+          });
         }
       }
     } else {
@@ -187,7 +160,6 @@ export async function startCommand(_args: string[]): Promise<void> {
         console.log(`\n  [${ts}] Found ${newPRs.length} new review request(s)`);
 
         for (const pr of newPRs) {
-          // Register in DB
           const row = queries.insertPR({
             pr_number: pr.number,
             repo: pr.repo,
@@ -200,35 +172,14 @@ export async function startCommand(_args: string[]): Promise<void> {
           queries.insertEvent(row.id, "detected", "Found during poll");
           queries.updatePRStatus(row.id, "notified");
 
-          // Send macOS notification
           console.log(`  [notify] ${pr.repo}#${pr.number}: ${pr.title}`);
-          try {
-            const action = await sendPRNotification({
-              repo: pr.repo,
-              pr_number: pr.number,
-              title: pr.title,
-              author: pr.author,
-              url: pr.url,
-            });
-            console.log(`  [action] ${pr.repo}#${pr.number}: ${action}`);
-            queries.insertEvent(row.id, "user_action", `User action: ${action}`);
-
-            if (action === "accept") {
-              queries.updatePRStatus(row.id, "accepted");
-              handleNewReview(pr, ctx).catch((err) => {
-                console.error(`  [error] Review failed for ${pr.repo}#${pr.number}: ${err.message}`);
-              });
-            } else if (action === "dismiss" || action === "timeout" || action === "snooze") {
-              queries.updatePRStatus(row.id, "dismissed");
-            } else if (action === "view") {
-              const { openInBrowser } = await import("../core/notifier.js");
-              await openInBrowser(pr.url);
-              queries.updatePRStatus(row.id, "dismissed");
-            }
-          } catch {
-            console.log(`  [skip] No alerter — registered for manual review`);
-            console.log(`    make review PR=${pr.url}`);
-          }
+          await sendPRNotification({
+            repo: pr.repo,
+            pr_number: pr.number,
+            title: pr.title,
+            author: pr.author,
+            url: pr.url,
+          });
         }
       }
     } catch (err: any) {
