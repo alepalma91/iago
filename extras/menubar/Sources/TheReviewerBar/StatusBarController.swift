@@ -201,7 +201,12 @@ final class StatusBarController {
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: bunPath)
-        task.arguments = ["run", "\(cliDir)/src/index.ts", "review", url, "--force"]
+        task.currentDirectoryURL = URL(fileURLWithPath: cliDir)
+        task.arguments = ["run", "src/index.ts", "review", url, "--force"]
+        task.environment = [
+            "HOME": home,
+            "PATH": "\(home)/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        ]
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
         try? task.run()
