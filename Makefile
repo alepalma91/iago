@@ -124,6 +124,40 @@ menubar-install: menubar-build ## Install menu bar binary
 menubar-run: menubar-build ## Run the menu bar app
 	$(MENUBAR_BIN)
 
+# ── Compile (standalone binary) ────────────────────────────
+
+DIST_DIR := dist
+VERSION := $(shell node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
+
+compile: ## Compile standalone binary (native arch)
+	@mkdir -p $(DIST_DIR)
+	bun build --compile --minify src/index.ts --outfile $(DIST_DIR)/iago
+	@echo "Built $(DIST_DIR)/iago ($(shell uname -m))"
+
+compile-arm64: ## Compile standalone binary (arm64)
+	@mkdir -p $(DIST_DIR)
+	bun build --compile --minify --target=bun-darwin-arm64 src/index.ts --outfile $(DIST_DIR)/iago-arm64
+	@echo "Built $(DIST_DIR)/iago-arm64"
+
+compile-x64: ## Compile standalone binary (x86_64)
+	@mkdir -p $(DIST_DIR)
+	bun build --compile --minify --target=bun-darwin-x64 src/index.ts --outfile $(DIST_DIR)/iago-x64
+	@echo "Built $(DIST_DIR)/iago-x64"
+
+compile-universal: compile-arm64 compile-x64 ## Compile universal binary (arm64 + x86_64)
+	@lipo -create -output $(DIST_DIR)/iago $(DIST_DIR)/iago-arm64 $(DIST_DIR)/iago-x64
+	@rm -f $(DIST_DIR)/iago-arm64 $(DIST_DIR)/iago-x64
+	@echo "Built $(DIST_DIR)/iago (universal)"
+
+dist: compile menubar-build ## Build distributable tarball (native arch)
+	@mkdir -p $(DIST_DIR)
+	@cp $(MENUBAR_BIN) $(DIST_DIR)/iago-bar 2>/dev/null || true
+	@tar -czf $(DIST_DIR)/iago-$(VERSION)-darwin-$(shell uname -m).tar.gz -C $(DIST_DIR) iago $(shell test -f $(DIST_DIR)/iago-bar && echo iago-bar)
+	@echo "Tarball: $(DIST_DIR)/iago-$(VERSION)-darwin-$(shell uname -m).tar.gz"
+
+clean-dist: ## Remove dist directory
+	rm -rf $(DIST_DIR)
+
 # ── Unified Build & Install ─────────────────────────────────
 
 build: install menubar-build ## Build everything (bun deps + menu bar binary)
