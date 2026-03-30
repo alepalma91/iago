@@ -9,7 +9,7 @@ const CONFIG_PATH = join(CONFIG_DIR, "config.yaml");
 const PROMPTS_DIR = join(CONFIG_DIR, "prompts");
 
 const DEFAULT_CONFIG_YAML = `# iago configuration
-# See: https://github.com/iago/docs
+# See: https://github.com/alepalma91/iago
 
 github:
   # poll_interval: "60s"

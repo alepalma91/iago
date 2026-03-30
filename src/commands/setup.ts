@@ -221,7 +221,7 @@ function buildConfigYaml(answers: SetupAnswers): string {
     config.repos = { "*": { auto_review: true } };
   }
 
-  return `# iago configuration\n# See: https://github.com/theburrowhub/iago\n\n${stringifyYAML(config)}`;
+  return `# iago configuration\n# See: https://github.com/alepalma91/iago\n\n${stringifyYAML(config)}`;
 }
 
 function writeIfNotExists(path: string, content: string): void {

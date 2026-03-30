@@ -3,7 +3,7 @@ set -euo pipefail
 
 # iago — AI-powered PR review daemon installer
 
-REPO="theburrowhub/iago"
+REPO="alepalma91/iago"
 IAGO_BIN="${IAGO_BIN:-$HOME/bin}"
 IAGO_HOME="${IAGO_HOME:-$HOME/.local/share/iago}"
 

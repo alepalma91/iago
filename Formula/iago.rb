@@ -3,16 +3,16 @@
 
 class Iago < Formula
   desc "AI-powered PR review daemon for macOS"
-  homepage "https://github.com/theburrowhub/iago"
+  homepage "https://github.com/alepalma91/iago"
   version "0.1.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/theburrowhub/iago/releases/download/v#{version}/iago-#{version}-darwin-arm64.tar.gz"
+      url "https://github.com/alepalma91/iago/releases/download/v#{version}/iago-#{version}-darwin-arm64.tar.gz"
       # sha256 "PLACEHOLDER" # Updated by CI on release
     else
-      url "https://github.com/theburrowhub/iago/releases/download/v#{version}/iago-#{version}-darwin-x86_64.tar.gz"
+      url "https://github.com/alepalma91/iago/releases/download/v#{version}/iago-#{version}-darwin-x86_64.tar.gz"
       # sha256 "PLACEHOLDER" # Updated by CI on release
     end
   end
