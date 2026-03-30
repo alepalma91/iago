@@ -67,6 +67,11 @@ install_prebuilt() {
 }
 
 install_from_source() {
+  # Ensure bun is in PATH (common install locations)
+  for p in "$HOME/.bun/bin" "/opt/homebrew/bin" "/usr/local/bin"; do
+    [ -x "$p/bun" ] && export PATH="$p:$PATH"
+  done
+
   if ! command -v bun >/dev/null 2>&1; then
     echo "Error: bun is required for source install."
     echo "Install it: curl -fsSL https://bun.sh/install | bash"
@@ -81,7 +86,7 @@ install_from_source() {
     git pull --ff-only
   else
     echo "  Cloning iago..."
-    git clone "https://github.com/${REPO}.git" "$IAGO_SRC"
+    gh repo clone "$REPO" "$IAGO_SRC"
     cd "$IAGO_SRC"
   fi
 
