@@ -195,7 +195,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
   <!-- PR Table Section -->
   <section>
     <h2>Pull Requests</h2>
-    <div hx-ext="sse" sse-connect="/api/sse" sse-swap="pr-update">
+    <div hx-ext="sse" sse-connect="/api/sse">
       <table>
         <thead>
           <tr>
@@ -208,7 +208,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
             <th></th>
           </tr>
         </thead>
-        <tbody id="pr-table-body">
+        <tbody id="pr-table-body" sse-swap="pr-update" hx-swap="innerHTML">
           ${renderPRRows(firstPage)}
         </tbody>
       </table>
@@ -510,11 +510,11 @@ export function createDashboardServer(
     return false;
   }
 
-  // SSE poll interval
+  // SSE poll interval — use transaction to ensure fresh WAL snapshot
   const sseInterval = setInterval(() => {
     if (sseClients.size === 0) return;
     try {
-      const prs = queries.getAllPRs();
+      const prs = db.transaction(() => queries.getAllPRs())();
       const currentMap = getUpdatedMap(prs);
       if (hasChanges(currentMap, lastUpdatedMap)) {
         lastUpdatedMap = currentMap;
@@ -590,14 +590,14 @@ export function createDashboardServer(
 
         // GET /api/reviews — JSON list of all PRs
         if (path === "/api/reviews" && req.method === "GET") {
-          return Response.json(queries.getAllPRs());
+          return Response.json(db.transaction(() => queries.getAllPRs())());
         }
 
         // GET /api/reviews/page?page=1&size=20 — paginated PR rows as HTML
         if (path === "/api/reviews/page" && req.method === "GET") {
           const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
           const size = Math.min(100, Math.max(1, parseInt(url.searchParams.get("size") || String(PAGE_SIZE), 10)));
-          const allPRs = queries.getAllPRs();
+          const allPRs = db.transaction(() => queries.getAllPRs())();
           const totalPages = Math.max(1, Math.ceil(allPRs.length / size));
           const offset = (page - 1) * size;
           const pagePRs = allPRs.slice(offset, offset + size);
@@ -672,13 +672,15 @@ export function createDashboardServer(
 
         // GET /api/sse — Server-Sent Events
         if (path === "/api/sse" && req.method === "GET") {
+          let ctrl: ReadableStreamDefaultController;
           const stream = new ReadableStream({
             start(controller) {
+              ctrl = controller;
               sseClients.add(controller);
               controller.enqueue(new TextEncoder().encode(":ok\n\n"));
             },
             cancel() {
-              // Client disconnected
+              sseClients.delete(ctrl);
             },
           });
 
