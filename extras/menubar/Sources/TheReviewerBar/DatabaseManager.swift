@@ -59,6 +59,31 @@ final class DatabaseManager {
         return query(sql)
     }
 
+    func fetchPendingPRs() -> [PRReview] {
+        let sql = """
+            SELECT id, pr_number, repo, title, status, url, opened_at
+            FROM pr_reviews
+            WHERE status IN ('detected', 'notified', 'accepted', 'cloning', 'reviewing')
+            ORDER BY
+              CASE WHEN status IN ('detected', 'notified') THEN 0 ELSE 1 END,
+              updated_at DESC
+            LIMIT 5
+            """
+        return query(sql)
+    }
+
+    func fetchRecentCompletedPRs() -> [PRReview] {
+        let sql = """
+            SELECT id, pr_number, repo, title, status, url, opened_at
+            FROM pr_reviews
+            WHERE status IN ('done', 'error')
+              AND updated_at >= datetime('now', '-48 hours')
+            ORDER BY updated_at DESC
+            LIMIT 5
+            """
+        return query(sql)
+    }
+
     func fetchBadgeCounts() -> BadgeCounts {
         var db: OpaquePointer?
         guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {

@@ -17,6 +17,8 @@ describe("buildAlerterArgs", () => {
     expect(args).toContain("PR Review Request");
     expect(args).toContain("--sound");
     expect(args).toContain("Ping");
+    expect(args).toContain("--actions");
+    expect(args).toContain("Launch Review,View on GitHub,Ignore");
   });
 
   it("should format subtitle as repo #number", () => {
@@ -35,6 +37,13 @@ describe("buildAlerterArgs", () => {
     const args = buildAlerterArgs(samplePR);
     const groupIdx = args.indexOf("--group");
     expect(args[groupIdx + 1]).toBe("pr-review-owner/repo-42");
+  });
+
+  it("should include action buttons", () => {
+    const args = buildAlerterArgs(samplePR);
+    const actionsIdx = args.indexOf("--actions");
+    expect(actionsIdx).toBeGreaterThan(-1);
+    expect(args[actionsIdx + 1]).toBe("Launch Review,View on GitHub,Ignore");
   });
 });
 

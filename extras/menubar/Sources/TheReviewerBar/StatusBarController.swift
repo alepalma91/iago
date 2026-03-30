@@ -69,29 +69,60 @@ final class StatusBarController: NSObject {
             return
         }
 
-        let prs = db.fetchRecentPRs()
+        let pending = db.fetchPendingPRs()
+        let recent = db.fetchRecentCompletedPRs()
         let counts = db.fetchBadgeCounts()
 
-        if prs.isEmpty {
-            let item = NSMenuItem(title: "No recent reviews", action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            menu.addItem(item)
+        // Section 1: To Review
+        let headerPending = NSMenuItem(title: "To Review", action: nil, keyEquivalent: "")
+        headerPending.isEnabled = false
+        let pendingAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ]
+        headerPending.attributedTitle = NSAttributedString(string: "TO REVIEW", attributes: pendingAttrs)
+        menu.addItem(headerPending)
+
+        if pending.isEmpty {
+            let emptyItem = NSMenuItem(title: "No pending reviews", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.addItem(emptyItem)
         } else {
-            for pr in prs {
+            for pr in pending {
                 menu.addItem(makeMenuItem(for: pr))
             }
         }
 
-        // "More..." opens dashboard
-        if prs.count >= 8 {
-            menu.addItem(.separator())
-            let moreItem = NSMenuItem(title: "More\u{2026}", action: #selector(openDashboard), keyEquivalent: "")
-            moreItem.target = self
-            if let globe = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "More") {
-                moreItem.image = globe
+        menu.addItem(.separator())
+
+        // Section 2: Recent
+        let headerRecent = NSMenuItem(title: "Recent", action: nil, keyEquivalent: "")
+        headerRecent.isEnabled = false
+        let recentAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ]
+        headerRecent.attributedTitle = NSAttributedString(string: "RECENT", attributes: recentAttrs)
+        menu.addItem(headerRecent)
+
+        if recent.isEmpty {
+            let emptyItem = NSMenuItem(title: "No recent reviews", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.addItem(emptyItem)
+        } else {
+            for pr in recent {
+                menu.addItem(makeMenuItem(for: pr))
             }
-            menu.addItem(moreItem)
         }
+
+        // Always show "More..." for easy dashboard access
+        menu.addItem(.separator())
+        let moreItem = NSMenuItem(title: "More\u{2026}", action: #selector(openDashboard), keyEquivalent: "")
+        moreItem.target = self
+        if let globe = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "More") {
+            moreItem.image = globe
+        }
+        menu.addItem(moreItem)
 
         menu.addItem(.separator())
         appendFooter(to: menu)

@@ -66,7 +66,7 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-const RETRYABLE = new Set(["done", "error", "dismissed"]);
+const RETRYABLE = new Set(["done", "error", "dismissed", "notified", "detected"]);
 const IN_PROGRESS = new Set(["accepted", "cloning", "reviewing"]);
 const PAGE_SIZE = 20;
 
@@ -102,8 +102,8 @@ function renderPRRows(prs: PRReview[]): string {
         ${IN_PROGRESS.has(pr.status) ? `<span class="in-progress-indicator">
           <span class="spinner"></span> In progress
         </span>` : ""}
-        <button class="btn ${pr.status === "done" || pr.status === "error" ? "btn-ghost" : "btn-ghost"} btn-sm" onclick="toggleDetail(${pr.id}, this)" title="View review output">
-          ${pr.status === "done" || pr.status === "error" ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8m8 4H8m2-8H8"/></svg> Output` : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>`}
+        <button class="btn btn-ghost btn-sm" onclick="toggleDetail(${pr.id}, this)" title="Details">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>
         </button>
       </td>
     </tr>

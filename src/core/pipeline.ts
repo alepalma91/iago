@@ -174,6 +174,16 @@ export async function handleNewReview(
     queries.updatePRStatus(pr.id, "done");
     queries.insertEvent(pr.id, "done", "Review complete");
 
+    // Compute brief summary from tool results
+    const passed = results.filter((r) => r.exitCode === 0).length;
+    const failed = results.filter((r) => r.exitCode !== 0 && !r.timedOut).length;
+    const timedOut = results.filter((r) => r.timedOut).length;
+    const summaryParts: string[] = [];
+    if (passed > 0) summaryParts.push(`${passed} passed`);
+    if (failed > 0) summaryParts.push(`${failed} failed`);
+    if (timedOut > 0) summaryParts.push(`${timedOut} timed out`);
+    const reviewSummary = summaryParts.length > 0 ? summaryParts.join(", ") : "no tools ran";
+
     // Notify user that review is done
     sendReviewCompleteNotification({
       repo: metadata.repo,
@@ -181,7 +191,7 @@ export async function handleNewReview(
       title: metadata.title,
       author: metadata.author,
       url: metadata.url,
-    }).catch(() => {}); // best-effort
+    }, reviewSummary).catch(() => {}); // best-effort
 
     // Clean up worktree
     const barePath = getBareRepoPath(metadata.repo, dataDir);
