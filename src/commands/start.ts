@@ -53,6 +53,19 @@ export async function startCommand(_args: string[]): Promise<void> {
   console.log(`  Max parallel: ${config.launchers.max_parallel}`);
   console.log(`  Data dir: ${dataDir}`);
   console.log("");
+
+  // Reset stuck reviews from previous sessions
+  const stuckReviews = queries.getStuckReviews();
+  if (stuckReviews.length > 0) {
+    console.log(`Resetting ${stuckReviews.length} stuck review(s)...`);
+    for (const pr of stuckReviews) {
+      console.log(`  [reset] ${pr.repo}#${pr.pr_number}: ${pr.status} -> error`);
+      queries.updatePRStatus(pr.id, "error");
+      queries.insertEvent(pr.id, "error", `Reset: review stuck in "${pr.status}" from previous session`);
+    }
+    console.log("");
+  }
+
   // Catch-up: check for pending review requests from the last 8 hours
   console.log("Checking for pending review requests...");
   try {

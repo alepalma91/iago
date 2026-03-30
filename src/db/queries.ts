@@ -59,6 +59,7 @@ export interface Queries {
   }[];
   getAllOutputs(): { output: string | null }[];
   getAvgCompletionTime(): { avg_seconds: number | null };
+  getStuckReviews(): PRReview[];
 }
 
 export function createQueries(db: Database): Queries {
@@ -80,6 +81,9 @@ export function createQueries(db: Database): Queries {
     getAllPRs: db.prepare("SELECT * FROM pr_reviews ORDER BY created_at DESC"),
     getActivePRs: db.prepare(
       "SELECT * FROM pr_reviews WHERE status NOT IN ('done', 'error', 'dismissed') ORDER BY created_at DESC"
+    ),
+    getStuckReviews: db.prepare(
+      "SELECT * FROM pr_reviews WHERE status IN ('accepted', 'cloning', 'reviewing') AND updated_at < datetime('now', '-10 minutes')"
     ),
     insertEvent: db.prepare(`
       INSERT INTO review_events (pr_review_id, event_type, message)
@@ -238,6 +242,11 @@ export function createQueries(db: Database): Queries {
 
     getActivePRs() {
       const rows = stmts.getActivePRs.all() as Record<string, unknown>[];
+      return rows.map(rowToPR);
+    },
+
+    getStuckReviews() {
+      const rows = stmts.getStuckReviews.all() as Record<string, unknown>[];
       return rows.map(rowToPR);
     },
 
