@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { Queries } from "../db/queries.js";
 import type { PRMetadata, AppConfig, NotificationAction } from "../types/index.js";
 import { sendPRNotification, openInBrowser, sendReviewCompleteNotification, sendReviewErrorNotification } from "./notifier.js";
+import { fetchPRGitHubStatus } from "./poller.js";
 import { ensureReferenceRepo, createWorktree, generateDiff, getOutputPath, removeWorktree, getBareRepoPath, getWorktreePath } from "./sandbox.js";
 import { launchAllTools, writeOutput } from "./launcher.js";
 import { assemblePrompt, loadPromptFile } from "./prompt.js";
@@ -173,6 +174,14 @@ export async function handleNewReview(
     queries.updatePRToolStatus(pr.id, toolStatus);
     queries.updatePRStatus(pr.id, "done");
     queries.insertEvent(pr.id, "done", "Review complete");
+
+    // Store the head SHA so we can detect when the author pushes new commits
+    try {
+      const ghStatus = await fetchPRGitHubStatus(metadata.repo, metadata.number);
+      if (ghStatus?.headRefOid) {
+        queries.updatePRHeadSha(pr.id, ghStatus.headRefOid);
+      }
+    } catch {}
 
     // Compute brief summary from tool results
     const passed = results.filter((r) => r.exitCode === 0).length;

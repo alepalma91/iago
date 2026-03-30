@@ -1,13 +1,13 @@
-import { loadConfig, getDataDir, shouldAutoReview } from "../core/config.js";
+import { loadConfig, getDataDir, getConfigDir, shouldAutoReview } from "../core/config.js";
 import { createDatabase } from "../db/database.js";
 import { createQueries } from "../db/queries.js";
-import { pollNotifications, enrichPR, fetchPendingReviews, createInitialPollState, checkGhAuth, fetchPRGitHubStatus } from "../core/poller.js";
+import { pollNotifications, enrichPR, fetchPendingReviews, createInitialPollState, checkGhAuth, fetchPRGitHubStatus, getCurrentGithubUser } from "../core/poller.js";
 import { handleNewReview } from "../core/pipeline.js";
 import { sendPRNotification } from "../core/notifier.js";
 import { writePidFile, removePidFile } from "../core/pid.js";
 import { createDashboardServer } from "../core/dashboard.js";
 import { join } from "path";
-import { mkdirSync } from "fs";
+import { existsSync, mkdirSync } from "fs";
 
 function parseDuration(duration: string): number {
   const match = duration.match(/^(\d+)(ms|s|m|h)$/);
@@ -24,6 +24,19 @@ function parseDuration(duration: string): number {
 }
 
 export async function startCommand(_args: string[]): Promise<void> {
+  // First-run detection: if no config file exists, hint at setup
+  const configPath = join(getConfigDir(), "config.yaml");
+  if (!existsSync(configPath)) {
+    console.log("No config found. Run 'iago setup' to configure, or press Enter for defaults.");
+    if (process.stdin.isTTY) {
+      await new Promise<void>((resolve) => {
+        process.stdin.once("data", () => resolve());
+        // Auto-continue after 5 seconds
+        setTimeout(resolve, 5000);
+      });
+    }
+  }
+
   const config = loadConfig();
   const dataDir = getDataDir(config);
 
@@ -35,6 +48,10 @@ export async function startCommand(_args: string[]): Promise<void> {
     console.error("iago: GitHub CLI not authenticated. Run `gh auth login` first.");
     process.exit(1);
   }
+
+  // Identify GitHub user
+  const ghUser = await getCurrentGithubUser();
+  console.log(`  GitHub user: ${ghUser ?? "unknown"}`);
 
   // Set up database
   const dbPath = join(dataDir, "iago.db");
@@ -65,6 +82,40 @@ export async function startCommand(_args: string[]): Promise<void> {
     }
     console.log("");
   }
+
+  // Bulk sync github_state for ALL tracked PRs
+  console.log("Syncing PR states with GitHub...");
+  const allPRs = queries.getAllPRsForSync();
+  let synced = 0;
+  for (const pr of allPRs) {
+    try {
+      const ghStatus = await fetchPRGitHubStatus(pr.repo, pr.pr_number);
+      if (!ghStatus) continue;
+      const newState = ghStatus.state.toLowerCase() as "open" | "merged" | "closed";
+      queries.updatePRGitHubState(pr.id, newState);
+      if (newState !== pr.github_state) {
+        console.log(`  [sync] ${pr.repo}#${pr.pr_number}: ${pr.github_state} → ${newState}`);
+      }
+
+      // Promote "done" PRs to "changes_requested" if we requested changes on GitHub
+      if (pr.status === "done" && ghStatus.reviewedByMe && ghStatus.myReviewState === "CHANGES_REQUESTED") {
+        console.log(`  [sync] ${pr.repo}#${pr.pr_number}: done → changes_requested`);
+        queries.updatePRStatus(pr.id, "changes_requested");
+        queries.updatePRHeadSha(pr.id, ghStatus.headRefOid);
+        queries.insertEvent(pr.id, "changes_requested", "Review requested changes on GitHub");
+      }
+
+      // Detect author pushes: if changes_requested and head SHA changed → updated
+      if (pr.status === "changes_requested" && pr.head_sha && ghStatus.headRefOid && ghStatus.headRefOid !== pr.head_sha) {
+        console.log(`  [sync] ${pr.repo}#${pr.pr_number}: changes_requested → updated (new commits pushed)`);
+        queries.updatePRStatus(pr.id, "updated");
+        queries.insertEvent(pr.id, "updated", "Author pushed new commits since last review");
+      }
+
+      synced++;
+    } catch {}
+  }
+  console.log(`  Synced ${synced}/${allPRs.length} PRs\n`);
 
   // Catch-up: check for pending review requests from the last 8 hours
   console.log("Checking for pending review requests...");
@@ -240,23 +291,43 @@ export async function startCommand(_args: string[]): Promise<void> {
           }
         }
       }
-      // Sync tracked PRs that may have been reviewed externally
-      const activePRs = queries.getActivePRs();
-      for (const pr of activePRs) {
-        if (pr.status !== "notified" && pr.status !== "detected") continue;
+      // Sync tracked PRs against GitHub — update github_state and dismiss stale ones
+      const syncablePRs = queries.getSyncablePRs();
+      for (const pr of syncablePRs) {
         try {
           const ghStatus = await fetchPRGitHubStatus(pr.repo, pr.pr_number);
           if (!ghStatus) continue;
 
-          if (ghStatus.state === "MERGED" || ghStatus.state === "CLOSED") {
-            console.log(`\n  [sync] ${pr.repo}#${pr.pr_number}: ${ghStatus.state.toLowerCase()} on GitHub → dismissed`);
-            queries.updatePRStatus(pr.id, "dismissed");
-            queries.insertEvent(pr.id, "dismissed", `PR ${ghStatus.state.toLowerCase()} on GitHub`);
-          } else if (!ghStatus.reviewRequestedByMe) {
-            // Review request was removed (someone else reviewed, or author dismissed)
-            console.log(`\n  [sync] ${pr.repo}#${pr.pr_number}: review no longer requested → dismissed`);
-            queries.updatePRStatus(pr.id, "dismissed");
-            queries.insertEvent(pr.id, "dismissed", "Review no longer requested from us");
+          // Update github_state for all PRs
+          const newGhState = ghStatus.state.toLowerCase() as "open" | "merged" | "closed";
+          if (newGhState !== pr.github_state) {
+            queries.updatePRGitHubState(pr.id, newGhState);
+            if (newGhState !== "open") {
+              console.log(`\n  [sync] ${pr.repo}#${pr.pr_number}: ${newGhState} on GitHub`);
+            }
+          } else {
+            // Touch synced_at even if state unchanged
+            queries.updatePRGitHubState(pr.id, pr.github_state);
+          }
+
+          // Auto-dismiss PRs still awaiting action if they're merged/closed/no longer requested
+          if (pr.status === "notified" || pr.status === "detected") {
+            if (ghStatus.state === "MERGED" || ghStatus.state === "CLOSED") {
+              console.log(`\n  [sync] ${pr.repo}#${pr.pr_number}: ${newGhState} → dismissed`);
+              queries.updatePRStatus(pr.id, "dismissed");
+              queries.insertEvent(pr.id, "dismissed", `PR ${newGhState} on GitHub`);
+            } else if (!ghStatus.reviewRequestedByMe && !ghStatus.reviewedByMe) {
+              console.log(`\n  [sync] ${pr.repo}#${pr.pr_number}: review no longer requested → dismissed`);
+              queries.updatePRStatus(pr.id, "dismissed");
+              queries.insertEvent(pr.id, "dismissed", "Review no longer requested from us");
+            }
+          }
+
+          // Detect author pushes on changes_requested PRs → updated
+          if (pr.status === "changes_requested" && pr.head_sha && ghStatus.headRefOid && ghStatus.headRefOid !== pr.head_sha) {
+            console.log(`\n  [sync] ${pr.repo}#${pr.pr_number}: changes_requested → updated (new commits pushed)`);
+            queries.updatePRStatus(pr.id, "updated");
+            queries.insertEvent(pr.id, "updated", "Author pushed new commits since last review");
           }
         } catch {}
       }
