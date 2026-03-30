@@ -7,6 +7,7 @@ import { sendPRNotification } from "../core/notifier.js";
 import { writePidFile, removePidFile } from "../core/pid.js";
 import { createDashboardServer } from "../core/dashboard.js";
 import { join } from "path";
+import { homedir } from "os";
 import { existsSync, mkdirSync } from "fs";
 
 function parseDuration(duration: string): number {
@@ -212,11 +213,30 @@ export async function startCommand(_args: string[]): Promise<void> {
     }
   }
 
+  // Launch menubar app if installed and not already running
+  let menubarProc: ReturnType<typeof Bun.spawn> | null = null;
+  try {
+    const menubarBin = join(homedir(), "bin", "iago-bar");
+    if (existsSync(menubarBin)) {
+      // Check if already running
+      const pgrep = Bun.spawnSync(["pgrep", "-f", "iago-bar"], { stdout: "pipe", stderr: "pipe" });
+      if (pgrep.exitCode !== 0) {
+        menubarProc = Bun.spawn([menubarBin], { stdout: "ignore", stderr: "ignore" });
+        console.log("Menu bar: started");
+      } else {
+        console.log("Menu bar: already running");
+      }
+    }
+  } catch {}
+
   console.log("\nPolling for PR review requests... (Ctrl+C to stop)");
 
   // Graceful shutdown
   const shutdown = () => {
     console.log("\niago: shutting down...");
+    if (menubarProc) {
+      menubarProc.kill();
+    }
     if (dashboardServer) {
       dashboardServer.stop();
     }

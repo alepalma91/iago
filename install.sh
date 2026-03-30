@@ -104,8 +104,7 @@ EOF
   # Build menu bar app if possible
   echo "  Building menu bar app..."
   if command -v swiftc >/dev/null 2>&1; then
-    (cd "$IAGO_SRC" && make menubar-build 2>/dev/null) && {
-      cp "$IAGO_SRC/extras/menubar/.build/IagoBar" "$IAGO_BIN/iago-bar"
+    (cd "$IAGO_SRC" && make menubar-install 2>/dev/null) && {
       echo "  Installed iago-bar to $IAGO_BIN/iago-bar"
     } || echo "  Warning: menu bar build failed (optional)"
   else
@@ -131,9 +130,26 @@ echo ""
 case ":$PATH:" in
   *":$IAGO_BIN:"*) ;;
   *)
-    echo "Add to your shell profile:"
-    echo "  export PATH=\"$IAGO_BIN:\$PATH\""
-    echo ""
+    # Detect shell profile
+    SHELL_NAME="$(basename "$SHELL")"
+    case "$SHELL_NAME" in
+      zsh)  PROFILE="$HOME/.zshrc" ;;
+      bash) PROFILE="$HOME/.bashrc" ;;
+      fish) PROFILE="$HOME/.config/fish/config.fish" ;;
+      *)    PROFILE="$HOME/.profile" ;;
+    esac
+
+    EXPORT_LINE="export PATH=\"$IAGO_BIN:\$PATH\""
+    if [ -f "$PROFILE" ] && grep -qF "$IAGO_BIN" "$PROFILE" 2>/dev/null; then
+      echo "  PATH already configured in $PROFILE"
+    else
+      echo "" >> "$PROFILE"
+      echo "# iago" >> "$PROFILE"
+      echo "$EXPORT_LINE" >> "$PROFILE"
+      echo "  Added $IAGO_BIN to PATH in $PROFILE"
+      echo "  Run: source $PROFILE (or open a new terminal)"
+    fi
+    export PATH="$IAGO_BIN:$PATH"
     ;;
 esac
 
