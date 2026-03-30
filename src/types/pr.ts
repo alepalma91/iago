@@ -5,8 +5,12 @@ export type PRStatus =
   | "cloning"
   | "reviewing"
   | "done"
+  | "changes_requested"
+  | "updated"
   | "error"
   | "dismissed";
+
+export type GitHubState = "open" | "merged" | "closed";
 
 export interface PRReview {
   id: number;
@@ -18,7 +22,9 @@ export interface PRReview {
   branch: string | null;
   base_branch: string;
   status: PRStatus;
+  github_state: GitHubState;
   tool_status: Record<string, string> | null;
+  head_sha: string | null;
   worktree_path: string | null;
   opened_at: string | null;
   created_at: string;

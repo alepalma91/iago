@@ -1,5 +1,6 @@
 export type {
   PRStatus,
+  GitHubState,
   PRReview,
   ReviewOutput,
   ReviewEvent,

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { PRReview, ReviewOutput, ReviewEvent, PRStatus } from "../types/index.js";
+import type { PRReview, ReviewOutput, ReviewEvent, PRStatus, GitHubState } from "../types/index.js";
 
 export interface Queries {
   insertPR(pr: {
@@ -14,10 +14,15 @@ export interface Queries {
 
   updatePRStatus(id: number, status: PRStatus): void;
   updatePRToolStatus(id: number, toolStatus: Record<string, string>): void;
+  updatePRGitHubState(id: number, state: GitHubState): void;
+  updatePRHeadSha(id: number, sha: string): void;
   getPR(id: number): PRReview | null;
   getPRByRepoAndNumber(repo: string, prNumber: number): PRReview | null;
   getAllPRs(): PRReview[];
   getActivePRs(): PRReview[];
+  getSyncablePRs(): PRReview[];
+  getAllPRsForSync(): PRReview[];
+  getPRsFiltered(opts: { status?: string; githubState?: string; page?: number; pageSize?: number }): { prs: PRReview[]; total: number };
 
   insertEvent(prReviewId: number, eventType: string, message?: string | null): ReviewEvent;
   getEvents(prReviewId: number): ReviewEvent[];
@@ -74,6 +79,12 @@ export function createQueries(db: Database): Queries {
     updateToolStatus: db.prepare(`
       UPDATE pr_reviews SET tool_status = $tool_status, updated_at = datetime('now') WHERE id = $id
     `),
+    updateGitHubState: db.prepare(`
+      UPDATE pr_reviews SET github_state = $github_state, github_synced_at = datetime('now'), updated_at = datetime('now') WHERE id = $id
+    `),
+    updateHeadSha: db.prepare(`
+      UPDATE pr_reviews SET head_sha = $head_sha, updated_at = datetime('now') WHERE id = $id
+    `),
     getPR: db.prepare("SELECT * FROM pr_reviews WHERE id = $id"),
     getPRByRepoAndNumber: db.prepare(
       "SELECT * FROM pr_reviews WHERE repo = $repo AND pr_number = $pr_number"
@@ -81,6 +92,16 @@ export function createQueries(db: Database): Queries {
     getAllPRs: db.prepare("SELECT * FROM pr_reviews ORDER BY created_at DESC"),
     getActivePRs: db.prepare(
       "SELECT * FROM pr_reviews WHERE status NOT IN ('done', 'error', 'dismissed') ORDER BY created_at DESC"
+    ),
+    getSyncablePRs: db.prepare(
+      `SELECT * FROM pr_reviews
+       WHERE status != 'dismissed'
+       AND (github_synced_at IS NULL OR github_synced_at < datetime('now', '-5 minutes'))
+       ORDER BY updated_at DESC
+       LIMIT 10`
+    ),
+    getAllPRsForSync: db.prepare(
+      "SELECT * FROM pr_reviews ORDER BY updated_at DESC"
     ),
     getStuckReviews: db.prepare(
       "SELECT * FROM pr_reviews WHERE status IN ('accepted', 'cloning', 'reviewing') AND updated_at < datetime('now', '-10 minutes')"
@@ -222,6 +243,14 @@ export function createQueries(db: Database): Queries {
       });
     },
 
+    updatePRGitHubState(id, state) {
+      stmts.updateGitHubState.run({ $id: id, $github_state: state });
+    },
+
+    updatePRHeadSha(id, sha) {
+      stmts.updateHeadSha.run({ $id: id, $head_sha: sha });
+    },
+
     getPR(id) {
       const row = stmts.getPR.get({ $id: id }) as Record<string, unknown> | null;
       return row ? rowToPR(row) : null;
@@ -243,6 +272,42 @@ export function createQueries(db: Database): Queries {
     getActivePRs() {
       const rows = stmts.getActivePRs.all() as Record<string, unknown>[];
       return rows.map(rowToPR);
+    },
+
+    getSyncablePRs() {
+      const rows = stmts.getSyncablePRs.all() as Record<string, unknown>[];
+      return rows.map(rowToPR);
+    },
+
+    getAllPRsForSync() {
+      const rows = stmts.getAllPRsForSync.all() as Record<string, unknown>[];
+      return rows.map(rowToPR);
+    },
+
+    getPRsFiltered({ status, githubState, page = 1, pageSize = 20 }) {
+      const conditions: string[] = [];
+      const params: Record<string, unknown> = {};
+
+      if (status && status !== "all") {
+        conditions.push("status = $status");
+        params.$status = status;
+      }
+      if (githubState && githubState !== "all") {
+        conditions.push("github_state = $github_state");
+        params.$github_state = githubState;
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      const countRow = db.query(`SELECT COUNT(*) as total FROM pr_reviews ${where}`).get(params) as { total: number };
+      const total = countRow?.total ?? 0;
+
+      const offset = (page - 1) * pageSize;
+      params.$limit = pageSize;
+      params.$offset = offset;
+      const rows = db.query(`SELECT * FROM pr_reviews ${where} ORDER BY created_at DESC LIMIT $limit OFFSET $offset`).all(params) as Record<string, unknown>[];
+
+      return { prs: rows.map(rowToPR), total };
     },
 
     getStuckReviews() {

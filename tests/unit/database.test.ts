@@ -80,14 +80,23 @@ describe("createDatabase", () => {
     db1.close();
     const db2 = createDatabase(TEST_DB);
     const row = db2.query("SELECT version FROM schema_version LIMIT 1").get() as { version: number };
-    expect(row.version).toBe(2);
+    expect(row.version).toBe(4);
     db2.close();
   });
 
-  it("should set schema_version to 2", () => {
+  it("should set schema_version to 3", () => {
     const db = createDatabase(TEST_DB);
     const row = db.query("SELECT version FROM schema_version LIMIT 1").get() as { version: number };
-    expect(row.version).toBe(2);
+    expect(row.version).toBe(4);
+    db.close();
+  });
+
+  it("should have github_state column on pr_reviews", () => {
+    const db = createDatabase(TEST_DB);
+    const cols = db.query("PRAGMA table_info(pr_reviews)").all() as { name: string }[];
+    const colNames = cols.map((c) => c.name);
+    expect(colNames).toContain("github_state");
+    expect(colNames).toContain("github_synced_at");
     db.close();
   });
 });
