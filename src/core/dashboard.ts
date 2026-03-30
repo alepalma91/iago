@@ -1069,7 +1069,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
   <div class="main">
 
     <!-- Reviews Tab -->
-    <div id="tab-reviews" class="tab-panel active" hx-ext="sse" sse-connect="/api/sse">
+    <div id="tab-reviews" class="tab-panel active">
       <div class="table-wrap">
         <div class="section-tabs" id="section-tabs">
           <button class="section-tab active" data-section="all" onclick="switchSection('all')">
@@ -1676,19 +1676,31 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
         + '</div></div>';
     }
 
-    // ── SSE live updates ──
-    var sseSource = new EventSource('/api/sse');
-    sseSource.addEventListener('pr-update', function() {
-      fetchPage(currentPage);
-      fetch('/api/reviews/page?status=' + activeStatuses.join(',') + '&size=1&page=1')
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          var badge = document.getElementById('active-count');
-          if (badge) badge.textContent = d.totalItems;
-        }).catch(function(){});
-      updateSectionCounts();
-      if (analyticsLoaded) loadAnalytics();
+    // ── SSE live updates (single connection, clean up on page hide) ──
+    var sseSource = null;
+    function connectSSE() {
+      if (sseSource) return;
+      sseSource = new EventSource('/api/sse');
+      sseSource.addEventListener('pr-update', function() {
+        fetchPage(currentPage);
+        fetch('/api/reviews/page?status=' + activeStatuses.join(',') + '&size=1&page=1')
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            var badge = document.getElementById('active-count');
+            if (badge) badge.textContent = d.totalItems;
+          }).catch(function(){});
+        updateSectionCounts();
+        if (analyticsLoaded) loadAnalytics();
+      });
+    }
+    function disconnectSSE() {
+      if (sseSource) { sseSource.close(); sseSource = null; }
+    }
+    connectSSE();
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) disconnectSSE(); else connectSSE();
     });
+    window.addEventListener('beforeunload', disconnectSSE);
 
   </script>
 </body>

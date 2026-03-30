@@ -64,7 +64,7 @@ describe("dashboard server", () => {
     const html = await res.text();
     expect(html).toContain("htmx.org");
     expect(html).toContain("iago");
-    expect(html).toContain("sse-connect");
+    expect(html).toContain("EventSource");
   });
 
   it("GET / should show empty state when no PRs", async () => {
