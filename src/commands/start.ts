@@ -96,6 +96,25 @@ export async function startCommand(_args: string[]): Promise<void> {
           });
         }
       }
+
+      // Re-notify PRs still awaiting action (notified/detected from a previous session)
+      const stillPending = pending.filter((pr) => {
+        const existing = queries.getPRByRepoAndNumber(pr.repo, pr.number);
+        return existing && (existing.status === "notified" || existing.status === "detected");
+      });
+      if (stillPending.length > 0) {
+        console.log(`  Re-notifying ${stillPending.length} PR(s) still awaiting action...\n`);
+        for (const pr of stillPending) {
+          console.log(`  [re-notify] ${pr.repo}#${pr.number}: ${pr.title}`);
+          await sendPRNotification({
+            repo: pr.repo,
+            pr_number: pr.number,
+            title: pr.title,
+            author: pr.author,
+            url: pr.url,
+          });
+        }
+      }
     } else {
       console.log("  No pending reviews found.");
     }
