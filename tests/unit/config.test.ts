@@ -53,7 +53,7 @@ launchers:
     expect(config.launchers.max_parallel).toBe(5);
     // Defaults preserved for unset fields
     expect(config.sandbox.strategy).toBe("worktree");
-    expect(config.dashboard.port).toBe(3847);
+    expect(config.dashboard.port).toBe(1460);
   });
 
   it("should expand tilde in paths", () => {

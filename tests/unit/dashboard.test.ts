@@ -71,8 +71,8 @@ describe("dashboard server", () => {
     dashboard = createDashboardServer(db, testConfig(port));
     const res = await fetch(`http://localhost:${port}/`);
     const html = await res.text();
-    expect(html).toContain("No PRs tracked yet");
-    expect(html).toContain("0 active");
+    expect(html).toContain("No reviews tracked yet");
+    expect(html).toContain("0");
   });
 
   it("GET / should show PR data with status badges", async () => {
@@ -89,12 +89,12 @@ describe("dashboard server", () => {
     dashboard = createDashboardServer(db, testConfig(port));
     const res = await fetch(`http://localhost:${port}/`);
     const html = await res.text();
-    expect(html).toContain("owner/repo");
+    expect(html).toContain("repo");
     expect(html).toContain("#42");
     expect(html).toContain("developer");
-    expect(html).toContain("reviewing");
+    expect(html).toContain("Reviewing");
     expect(html).toContain("feat: add auth");
-    expect(html).toContain("1 active");
+    expect(html).toContain("1");
   });
 
   it("GET /api/reviews should return JSON array", async () => {

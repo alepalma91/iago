@@ -184,21 +184,22 @@ describe("dashboard integration", () => {
     const html = await res.text();
 
     // Both PRs shown
-    expect(html).toContain("team/app");
+    expect(html).toContain("app");
+    expect(html).toContain("team");
     expect(html).toContain("#7");
     expect(html).toContain("#8");
     expect(html).toContain("feat: dark mode");
     expect(html).toContain("fix: button color");
 
     // Status badges present
-    expect(html).toContain("done");
-    expect(html).toContain("error");
+    expect(html).toContain("Done");
+    expect(html).toContain("Error");
 
     // Tool status pills
     expect(html).toContain("claude: error");
 
     // Active count (neither done nor error counts)
-    expect(html).toContain("0 active");
+    expect(html).toContain(">0<");
   });
 
   it("returns empty arrays for non-existent PR events/outputs", async () => {
