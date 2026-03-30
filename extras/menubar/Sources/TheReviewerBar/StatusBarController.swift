@@ -350,15 +350,13 @@ final class StatusBarController: NSObject {
         let baseIcon = loadIcon()
         baseIcon.size = NSSize(width: 18, height: 18)
 
-        // Determine badge based on priority
+        // Determine badge based on priority (only actionable states get a badge)
         if counts.errorCount > 0 {
             statusItem.button?.image = compositeIcon(base: baseIcon, badge: .red, count: counts.errorCount)
         } else if counts.actionCount > 0 {
             statusItem.button?.image = compositeIcon(base: baseIcon, badge: .orangeAction, count: counts.actionCount)
         } else if counts.reviewingCount > 0 {
             statusItem.button?.image = compositeIcon(base: baseIcon, badge: .orangeReviewing, count: counts.reviewingCount)
-        } else if counts.doneUnopenedCount > 0 {
-            statusItem.button?.image = compositeIcon(base: baseIcon, badge: .green, count: counts.doneUnopenedCount)
         } else {
             baseIcon.isTemplate = true
             statusItem.button?.image = baseIcon
