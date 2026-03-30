@@ -70,17 +70,18 @@ final class StatusBarController: NSObject {
         }
 
         let pending = db.fetchPendingPRs()
+        let inProgress = db.fetchInProgressPRs()
         let recent = db.fetchRecentCompletedPRs()
         let counts = db.fetchBadgeCounts()
 
         // Section 1: To Review
         let headerPending = NSMenuItem(title: "To Review", action: nil, keyEquivalent: "")
         headerPending.isEnabled = false
-        let pendingAttrs: [NSAttributedString.Key: Any] = [
+        let sectionAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
             .foregroundColor: NSColor.secondaryLabelColor,
         ]
-        headerPending.attributedTitle = NSAttributedString(string: "TO REVIEW", attributes: pendingAttrs)
+        headerPending.attributedTitle = NSAttributedString(string: "TO REVIEW", attributes: sectionAttrs)
         menu.addItem(headerPending)
 
         if pending.isEmpty {
@@ -95,7 +96,25 @@ final class StatusBarController: NSObject {
 
         menu.addItem(.separator())
 
-        // Section 2: Recent
+        // Section 2: In Progress
+        let headerInProgress = NSMenuItem(title: "In Progress", action: nil, keyEquivalent: "")
+        headerInProgress.isEnabled = false
+        headerInProgress.attributedTitle = NSAttributedString(string: "IN PROGRESS", attributes: sectionAttrs)
+        menu.addItem(headerInProgress)
+
+        if inProgress.isEmpty {
+            let emptyItem = NSMenuItem(title: "No active reviews", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.addItem(emptyItem)
+        } else {
+            for pr in inProgress {
+                menu.addItem(makeMenuItem(for: pr))
+            }
+        }
+
+        menu.addItem(.separator())
+
+        // Section 3: Recent
         let headerRecent = NSMenuItem(title: "Recent", action: nil, keyEquivalent: "")
         headerRecent.isEnabled = false
         let recentAttrs: [NSAttributedString.Key: Any] = [

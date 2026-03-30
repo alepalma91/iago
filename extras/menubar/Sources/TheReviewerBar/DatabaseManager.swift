@@ -63,9 +63,22 @@ final class DatabaseManager {
         let sql = """
             SELECT id, pr_number, repo, title, status, url, opened_at
             FROM pr_reviews
-            WHERE status IN ('detected', 'notified', 'accepted', 'cloning', 'reviewing')
+            WHERE status IN ('detected', 'notified', 'updated')
             ORDER BY
-              CASE WHEN status IN ('detected', 'notified') THEN 0 ELSE 1 END,
+              CASE WHEN status = 'updated' THEN 0 ELSE 1 END,
+              updated_at DESC
+            LIMIT 5
+            """
+        return query(sql)
+    }
+
+    func fetchInProgressPRs() -> [PRReview] {
+        let sql = """
+            SELECT id, pr_number, repo, title, status, url, opened_at
+            FROM pr_reviews
+            WHERE status IN ('accepted', 'cloning', 'reviewing', 'changes_requested')
+            ORDER BY
+              CASE WHEN status = 'changes_requested' THEN 1 ELSE 0 END,
               updated_at DESC
             LIMIT 5
             """
@@ -109,7 +122,7 @@ final class DatabaseManager {
 
         let actionCount = countQuery("""
             SELECT COUNT(*) FROM pr_reviews
-            WHERE status IN ('detected', 'notified')
+            WHERE status IN ('detected', 'notified', 'updated')
               AND updated_at >= datetime('now', '-24 hours')
             """)
 

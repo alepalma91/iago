@@ -21,16 +21,18 @@ struct PRReview {
 
     var sfSymbolName: String {
         switch status {
-        case "detected":       return "eye"
-        case "notified":       return "bell"
-        case "accepted":       return "checkmark"
-        case "cloning":        return "arrow.down.circle"
-        case "reviewing":      return "magnifyingglass"
-        case "running_tools":  return "hammer"
-        case "done":           return "checkmark.circle"
-        case "error":          return "exclamationmark.triangle"
-        case "dismissed":      return "xmark.circle"
-        default:               return "questionmark.circle"
+        case "detected":           return "eye"
+        case "notified":           return "bell"
+        case "accepted":           return "checkmark"
+        case "cloning":            return "arrow.down.circle"
+        case "reviewing":          return "magnifyingglass"
+        case "running_tools":      return "hammer"
+        case "done":               return "checkmark.circle"
+        case "changes_requested":  return "arrow.triangle.2.circlepath"
+        case "updated":            return "arrow.up.circle"
+        case "error":              return "exclamationmark.triangle"
+        case "dismissed":          return "xmark.circle"
+        default:                   return "questionmark.circle"
         }
     }
 
@@ -43,7 +45,7 @@ struct PRReview {
     /// Whether this PR can be reviewed (or re-reviewed/retried)
     var canReview: Bool {
         switch status {
-        case "detected", "notified", "dismissed", "done", "error":
+        case "detected", "notified", "dismissed", "done", "error", "changes_requested", "updated":
             return true
         default:
             return false
@@ -53,17 +55,18 @@ struct PRReview {
     /// Label for the review action button
     var reviewActionLabel: String {
         switch status {
-        case "done":  return "Re-launch Review"
-        case "error": return "Retry"
-        default:      return "Launch Review"
+        case "done", "changes_requested":  return "Re-launch Review"
+        case "updated":                    return "Re-review"
+        case "error":                      return "Retry"
+        default:                           return "Launch Review"
         }
     }
 
     /// SF Symbol for the review action button
     var reviewActionSymbol: String {
         switch status {
-        case "done", "error": return "arrow.counterclockwise"
-        default:              return "play.fill"
+        case "done", "error", "changes_requested", "updated": return "arrow.counterclockwise"
+        default:                                               return "play.fill"
         }
     }
 

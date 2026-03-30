@@ -24,6 +24,7 @@ function testConfig(port: number): AppConfig {
     prompts: { system_prompt: "", instructions: "", techniques: {}, default_techniques: [] },
     notifications: { native: false, on_new_pr: false, on_review_complete: false, on_review_error: false, sound: "default" },
     dashboard: { enabled: true, port, auto_open: false },
+    repos: {},
   };
 }
 
@@ -106,7 +107,7 @@ describe("dashboard integration", () => {
 
     expect(sseData).not.toBe("timeout");
     expect(sseData).toContain("event: pr-update");
-    expect(sseData).toContain("a/b");
+    expect(sseData).toContain("refresh");
   });
 
   it("GET /api/reviews/:id/events returns events for a PR", async () => {

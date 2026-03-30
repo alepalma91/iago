@@ -18,6 +18,8 @@ const STATUS_COLORS: Record<string, string> = {
   cloning: "#06b6d4",
   reviewing: "#f97316",
   done: "#22c55e",
+  changes_requested: "#f59e0b",
+  updated: "#8b5cf6",
   error: "#ef4444",
   dismissed: "#71717a",
 };
@@ -29,8 +31,22 @@ const STATUS_LABELS: Record<string, string> = {
   cloning: "Cloning",
   reviewing: "Reviewing",
   done: "Done",
+  changes_requested: "Changes Req.",
+  updated: "Updated",
   error: "Error",
   dismissed: "Dismissed",
+};
+
+const GH_STATE_COLORS: Record<string, string> = {
+  open: "#22c55e",
+  merged: "#a855f7",
+  closed: "#ef4444",
+};
+
+const GH_STATE_LABELS: Record<string, string> = {
+  open: "Open",
+  merged: "Merged",
+  closed: "Closed",
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -66,9 +82,9 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-const RETRYABLE = new Set(["done", "error", "dismissed", "notified", "detected"]);
+const RETRYABLE = new Set(["done", "error", "dismissed", "notified", "detected", "changes_requested", "updated"]);
 const IN_PROGRESS = new Set(["accepted", "cloning", "reviewing"]);
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 // ── PR Row Rendering ───────────────────────────────────────────────────────
 
@@ -84,12 +100,15 @@ function renderPRRows(prs: PRReview[]): string {
   }
   return prs
     .map(
-      (pr) => `<tr class="pr-row" data-status="${pr.status}">
+      (pr) => `<tr class="pr-row" data-status="${pr.status}" data-gh-state="${pr.github_state ?? "open"}">
       <td class="cell-repo">
         <span class="repo-name">${escapeHtml(pr.repo.split("/").pop() || pr.repo)}</span>
         <span class="repo-org text-muted">${escapeHtml(pr.repo.split("/")[0] || "")}</span>
       </td>
-      <td><a href="${escapeHtml(pr.url)}" target="_blank" rel="noopener" class="pr-link">#${pr.pr_number}</a></td>
+      <td>
+        <a href="${escapeHtml(pr.url)}" target="_blank" rel="noopener" class="pr-link">#${pr.pr_number}</a>
+        <span class="gh-state-badge" style="--gh-color:${GH_STATE_COLORS[pr.github_state] ?? "#22c55e"}">${GH_STATE_LABELS[pr.github_state] ?? "Open"}</span>
+      </td>
       <td>${pr.author ? `<span class="author">@${escapeHtml(pr.author)}</span>` : '<span class="text-muted">\u2014</span>'}</td>
       <td><span class="status-badge" style="--status-color:${STATUS_COLORS[pr.status] ?? "#71717a"}">${STATUS_LABELS[pr.status] ?? pr.status}</span></td>
       <td class="cell-title">${pr.title ? escapeHtml(pr.title) : '<span class="text-muted">\u2014</span>'}</td>
@@ -167,8 +186,13 @@ function computeStats(queries: Queries) {
 
 function renderHTML(prs: PRReview[], queries: Queries): string {
   const activePRs = prs.filter((pr) => !["done", "error", "dismissed"].includes(pr.status));
-  const firstPage = prs.slice(0, PAGE_SIZE);
-  const totalPages = Math.max(1, Math.ceil(prs.length / PAGE_SIZE));
+  const toReviewPRs = prs.filter((pr) => ["detected", "notified", "updated"].includes(pr.status));
+  const inProgressPRs = prs.filter((pr) => ["accepted", "cloning", "reviewing", "changes_requested"].includes(pr.status));
+  const recentPRs = prs.filter((pr) => ["done", "error"].includes(pr.status));
+  // Default view: show non-dismissed PRs
+  const defaultFiltered = prs.filter((pr) => pr.status !== "dismissed");
+  const firstPage = defaultFiltered.slice(0, PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(defaultFiltered.length / PAGE_SIZE));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -410,6 +434,159 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       height: 6px;
       border-radius: 50%;
       background: var(--status-color);
+    }
+
+    /* ── GitHub state badge ── */
+    .gh-state-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--gh-color);
+      background: color-mix(in srgb, var(--gh-color) 12%, transparent);
+      margin-left: 6px;
+      vertical-align: middle;
+      text-transform: uppercase;
+    }
+
+    /* ── Section tabs ── */
+    .section-tabs {
+      display: flex;
+      gap: 0;
+      padding: 0 16px;
+      background: var(--bg-raised);
+      border-bottom: 1px solid var(--border);
+    }
+    .section-tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: none;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .section-tab:hover { color: var(--text-secondary); }
+    .section-tab.active {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+    .section-tab .section-count {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 10px;
+      background: var(--bg-hover);
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .section-tab.active .section-count {
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
+      color: var(--accent);
+    }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-raised);
+      flex-wrap: wrap;
+    }
+    .filter-bar label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+    .filter-summary {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ── Multi-select dropdown ── */
+    .multi-select {
+      position: relative;
+      display: inline-block;
+    }
+    .multi-select-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 12px;
+      padding: 5px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      min-width: 100px;
+      white-space: nowrap;
+    }
+    .multi-select-btn:hover { border-color: var(--text-muted); }
+    .multi-select-btn.open { border-color: var(--accent); }
+    .multi-select-btn svg {
+      width: 12px; height: 12px;
+      opacity: 0.5;
+      transition: transform 0.15s;
+      flex-shrink: 0;
+    }
+    .multi-select-btn.open svg { transform: rotate(180deg); }
+    .multi-select-panel {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 100;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 4px 0;
+      min-width: 180px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .multi-select-panel.open { display: block; }
+    .multi-select-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.1s;
+      user-select: none;
+    }
+    .multi-select-item:hover { background: var(--bg-hover); }
+    .multi-select-item input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .multi-select-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .multi-select-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
     }
 
     /* ── Pills ── */
@@ -882,7 +1059,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           Chat
         </button>
-        <button class="btn btn-outline btn-sm" onclick="location.reload()" title="Refresh">
+        <button class="btn btn-outline btn-sm" onclick="refreshData()" title="Refresh data">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         </button>
       </div>
@@ -894,6 +1071,59 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     <!-- Reviews Tab -->
     <div id="tab-reviews" class="tab-panel active" hx-ext="sse" sse-connect="/api/sse">
       <div class="table-wrap">
+        <div class="section-tabs" id="section-tabs">
+          <button class="section-tab active" data-section="all" onclick="switchSection('all')">
+            All <span class="section-count" id="count-all">${defaultFiltered.length}</span>
+          </button>
+          <button class="section-tab" data-section="to-review" onclick="switchSection('to-review')">
+            To Review <span class="section-count" id="count-to-review">${toReviewPRs.length}</span>
+          </button>
+          <button class="section-tab" data-section="in-progress" onclick="switchSection('in-progress')">
+            In Progress <span class="section-count" id="count-in-progress">${inProgressPRs.length}</span>
+          </button>
+          <button class="section-tab" data-section="recent" onclick="switchSection('recent')">
+            Recent <span class="section-count" id="count-recent">${recentPRs.length}</span>
+          </button>
+        </div>
+        <div class="filter-bar">
+          <label>Status</label>
+          <div class="multi-select" id="ms-status">
+            <button class="multi-select-btn" onclick="togglePanel('ms-status', event)">
+              <span class="ms-label">Active</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="multi-select-panel" id="ms-status-panel">
+              <label class="multi-select-item" data-value="detected"><input type="checkbox" checked><span class="multi-select-dot" style="background:#71717a"></span>Detected</label>
+              <label class="multi-select-item" data-value="notified"><input type="checkbox" checked><span class="multi-select-dot" style="background:#3b82f6"></span>Awaiting</label>
+              <label class="multi-select-item" data-value="accepted"><input type="checkbox" checked><span class="multi-select-dot" style="background:#eab308"></span>Accepted</label>
+              <label class="multi-select-item" data-value="cloning"><input type="checkbox" checked><span class="multi-select-dot" style="background:#06b6d4"></span>Cloning</label>
+              <label class="multi-select-item" data-value="reviewing"><input type="checkbox" checked><span class="multi-select-dot" style="background:#f97316"></span>Reviewing</label>
+              <label class="multi-select-item" data-value="done"><input type="checkbox" checked><span class="multi-select-dot" style="background:#22c55e"></span>Done</label>
+              <label class="multi-select-item" data-value="changes_requested"><input type="checkbox" checked><span class="multi-select-dot" style="background:#f59e0b"></span>Changes Req.</label>
+              <label class="multi-select-item" data-value="updated"><input type="checkbox" checked><span class="multi-select-dot" style="background:#8b5cf6"></span>Updated</label>
+              <label class="multi-select-item" data-value="error"><input type="checkbox" checked><span class="multi-select-dot" style="background:#ef4444"></span>Error</label>
+              <div class="multi-select-divider"></div>
+              <label class="multi-select-item" data-value="dismissed"><input type="checkbox"><span class="multi-select-dot" style="background:#71717a"></span>Dismissed</label>
+            </div>
+          </div>
+          <label>GitHub</label>
+          <div class="multi-select" id="ms-gh">
+            <button class="multi-select-btn" onclick="togglePanel('ms-gh', event)">
+              <span class="ms-label">All</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="multi-select-panel" id="ms-gh-panel">
+              <label class="multi-select-item" data-value="open"><input type="checkbox" checked><span class="multi-select-dot" style="background:#22c55e"></span>Open</label>
+              <label class="multi-select-item" data-value="merged"><input type="checkbox" checked><span class="multi-select-dot" style="background:#a855f7"></span>Merged</label>
+              <label class="multi-select-item" data-value="closed"><input type="checkbox" checked><span class="multi-select-dot" style="background:#ef4444"></span>Closed</label>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="refreshData()" id="refresh-btn" title="Refresh">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+            Refresh
+          </button>
+          <span class="filter-summary" id="filter-summary">${defaultFiltered.length} review(s)</span>
+        </div>
         <table>
           <thead>
             <tr>
@@ -906,7 +1136,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
               <th style="text-align:right">Actions</th>
             </tr>
           </thead>
-          <tbody id="pr-table-body" sse-swap="pr-update" hx-swap="innerHTML">
+          <tbody id="pr-table-body">
             ${renderPRRows(firstPage)}
           </tbody>
         </table>
@@ -976,10 +1206,12 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
   <script>
     // ── State ──
     let currentPage = 1;
-    let totalPages = Math.max(1, Math.ceil(${prs.length} / ${PAGE_SIZE}));
+    let totalPages = ${totalPages};
+    let totalItems = ${defaultFiltered.length};
     let chartInstances = {};
     let chatHistory = [];
     let analyticsLoaded = false;
+    let currentFilters = { status: 'active', githubState: 'all' };
 
     // ── Tab switching ──
     function switchTab(tab) {
@@ -1015,20 +1247,165 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       document.getElementById('sidebar-toggle').classList.add('active');
     }
 
-    // ── Pagination ──
-    async function goToPage(page) {
-      if (page < 1 || page > totalPages) return;
-      currentPage = page;
+    // ── Multi-select dropdowns ──
+    var allStatuses = ['detected','notified','accepted','cloning','reviewing','done','changes_requested','updated','error','dismissed'];
+    var activeStatuses = ['detected','notified','accepted','cloning','reviewing','done','changes_requested','updated','error'];
+    var allGhStates = ['open','merged','closed'];
+
+    var sectionMap = {
+      'all': ['detected','notified','accepted','cloning','reviewing','done','changes_requested','updated','error'],
+      'to-review': ['detected','notified','updated'],
+      'in-progress': ['accepted','cloning','reviewing','changes_requested'],
+      'recent': ['done','error']
+    };
+    var currentSection = 'all';
+
+    function togglePanel(id, event) {
+      if (event) event.stopPropagation();
+      var panel = document.getElementById(id + '-panel');
+      var btn = panel.previousElementSibling;
+      var isOpen = panel.classList.toggle('open');
+      btn.classList.toggle('open', isOpen);
+      // Close other panels
+      document.querySelectorAll('.multi-select-panel.open').forEach(function(p) {
+        if (p.id !== id + '-panel') { p.classList.remove('open'); p.previousElementSibling.classList.remove('open'); }
+      });
+    }
+
+    // Close panels on outside click
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.multi-select')) {
+        document.querySelectorAll('.multi-select-panel.open').forEach(function(p) {
+          p.classList.remove('open');
+          p.previousElementSibling.classList.remove('open');
+        });
+      }
+    });
+
+    function getSelected(panelId) {
+      var items = document.querySelectorAll('#' + panelId + ' .multi-select-item');
+      var selected = [];
+      items.forEach(function(item) {
+        if (item.querySelector('input').checked) selected.push(item.getAttribute('data-value'));
+      });
+      return selected;
+    }
+
+    function updateLabel(msId, allValues, labelMap) {
+      var panel = document.getElementById(msId + '-panel');
+      var label = panel.previousElementSibling.querySelector('.ms-label');
+      var selected = getSelected(msId + '-panel');
+      if (selected.length === 0) { label.textContent = 'None'; }
+      else if (selected.length === allValues.length) { label.textContent = 'All'; }
+      else if (selected.length <= 2) {
+        label.textContent = selected.map(function(v) { return labelMap[v] || v; }).join(', ');
+      } else {
+        label.textContent = selected.length + ' selected';
+      }
+    }
+
+    var statusLabels = {detected:'Detected',notified:'Awaiting',accepted:'Accepted',cloning:'Cloning',reviewing:'Reviewing',done:'Done',changes_requested:'Changes Req.',updated:'Updated',error:'Error',dismissed:'Dismissed'};
+    var ghLabels = {open:'Open',merged:'Merged',closed:'Closed'};
+
+    // Listen for checkbox changes
+    document.getElementById('ms-status-panel').addEventListener('change', function() {
+      updateLabel('ms-status', allStatuses, statusLabels);
+      currentPage = 1;
+      fetchPage(1);
+    });
+    document.getElementById('ms-gh-panel').addEventListener('change', function() {
+      updateLabel('ms-gh', allGhStates, ghLabels);
+      currentPage = 1;
+      fetchPage(1);
+    });
+
+    // ── Section tabs ──
+    function switchSection(section) {
+      currentSection = section;
+      var statuses = sectionMap[section] || sectionMap['all'];
+      // Update checkboxes to match section
+      var panel = document.getElementById('ms-status-panel');
+      var checkboxes = panel.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach(function(cb) {
+        var val = cb.closest('.multi-select-item').getAttribute('data-value');
+        cb.checked = statuses.indexOf(val) !== -1;
+      });
+      updateLabel('ms-status', allStatuses, statusLabels);
+      // Update active tab
+      document.querySelectorAll('.section-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelector('.section-tab[data-section="' + section + '"]').classList.add('active');
+      currentPage = 1;
+      fetchPage(1);
+    }
+
+    function updateSectionCounts() {
+      var sections = {
+        'all': activeStatuses,
+        'to-review': sectionMap['to-review'],
+        'in-progress': sectionMap['in-progress'],
+        'recent': sectionMap['recent']
+      };
+      Object.keys(sections).forEach(function(key) {
+        fetch('/api/reviews/page?status=' + sections[key].join(',') + '&size=1&page=1')
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            var el = document.getElementById('count-' + key);
+            if (el) el.textContent = d.totalItems;
+          })
+          .catch(function() {});
+      });
+    }
+
+    // ── Filtering & Pagination ──
+    function buildQueryString(page) {
+      var params = new URLSearchParams();
+      params.set('page', page);
+      params.set('size', '${PAGE_SIZE}');
+      var statuses = getSelected('ms-status-panel');
+      if (statuses.length > 0 && statuses.length < allStatuses.length) {
+        params.set('status', statuses.join(','));
+      }
+      var ghStates = getSelected('ms-gh-panel');
+      if (ghStates.length > 0 && ghStates.length < allGhStates.length) {
+        params.set('github_state', ghStates.join(','));
+      }
+      return params.toString();
+    }
+
+    async function fetchPage(page) {
       try {
-        var res = await fetch('/api/reviews/page?page=' + page + '&size=${PAGE_SIZE}');
+        var res = await fetch('/api/reviews/page?' + buildQueryString(page));
         var data = await res.json();
         totalPages = data.totalPages;
+        totalItems = data.totalItems;
+        currentPage = data.page;
         document.getElementById('pr-table-body').innerHTML = data.html;
         document.getElementById('page-info').textContent = 'Page ' + currentPage + ' of ' + totalPages;
         document.getElementById('prev-btn').disabled = currentPage <= 1;
         document.getElementById('next-btn').disabled = currentPage >= totalPages;
         document.getElementById('pagination').style.display = totalPages <= 1 ? 'none' : 'flex';
+        document.getElementById('filter-summary').textContent = totalItems + ' review(s)';
       } catch(e) {}
+    }
+
+    async function goToPage(page) {
+      if (page < 1 || page > totalPages) return;
+      await fetchPage(page);
+    }
+
+    async function refreshData() {
+      var btn = document.getElementById('refresh-btn');
+      if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+      await fetchPage(currentPage);
+      // Also refresh active count badge + section counts
+      try {
+        var res = await fetch('/api/reviews/page?status=' + activeStatuses.join(',') + '&size=1&page=1');
+        var data = await res.json();
+        var badge = document.getElementById('active-count');
+        if (badge) badge.textContent = data.totalItems;
+      } catch(e) {}
+      updateSectionCounts();
+      if (btn) { btn.disabled = false; btn.style.opacity = ''; }
     }
 
     // ── Analytics ──
@@ -1300,15 +1677,16 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     }
 
     // ── SSE live updates ──
-    document.body.addEventListener('htmx:sseMessage', function() {
-      var badges = document.querySelectorAll('.status-badge');
-      var active = 0;
-      badges.forEach(function(b) {
-        var s = b.textContent.trim();
-        if (s !== 'Done' && s !== 'Error' && s !== 'Dismissed') active++;
-      });
-      var badge = document.getElementById('active-count');
-      if (badge) badge.textContent = active;
+    var sseSource = new EventSource('/api/sse');
+    sseSource.addEventListener('pr-update', function() {
+      fetchPage(currentPage);
+      fetch('/api/reviews/page?status=' + activeStatuses.join(',') + '&size=1&page=1')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          var badge = document.getElementById('active-count');
+          if (badge) badge.textContent = d.totalItems;
+        }).catch(function(){});
+      updateSectionCounts();
       if (analyticsLoaded) loadAnalytics();
     });
 
@@ -1341,7 +1719,7 @@ export function createDashboardServer(
     return false;
   }
 
-  // SSE poll
+  // SSE poll — send lightweight signal so client re-fetches with its filters
   const sseInterval = setInterval(() => {
     if (sseClients.size === 0) return;
     try {
@@ -1349,9 +1727,7 @@ export function createDashboardServer(
       const currentMap = getUpdatedMap(prs);
       if (hasChanges(currentMap, lastUpdatedMap)) {
         lastUpdatedMap = currentMap;
-        const pageRows = prs.slice(0, PAGE_SIZE);
-        const html = renderPRRows(pageRows);
-        const data = `event: pr-update\ndata: ${html.replace(/\n/g, "\ndata: ")}\n\n`;
+        const data = `event: pr-update\ndata: refresh\n\n`;
         for (const controller of sseClients) {
           try {
             controller.enqueue(new TextEncoder().encode(data));
@@ -1453,9 +1829,9 @@ RULES:
 
         // GET / — HTML page
         if (path === "/" && req.method === "GET") {
-          const prs = queries.getAllPRs();
-          lastUpdatedMap = getUpdatedMap(prs);
-          return new Response(renderHTML(prs, queries), {
+          const allPRs = queries.getAllPRs();
+          lastUpdatedMap = getUpdatedMap(allPRs);
+          return new Response(renderHTML(allPRs, queries), {
             headers: { "Content-Type": "text/html; charset=utf-8" },
           });
         }
@@ -1465,15 +1841,30 @@ RULES:
           return Response.json(db.transaction(() => queries.getAllPRs())());
         }
 
-        // GET /api/reviews/page
+        // GET /api/reviews/page — supports comma-separated status and github_state filters
         if (path === "/api/reviews/page" && req.method === "GET") {
           const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
           const size = Math.min(100, Math.max(1, parseInt(url.searchParams.get("size") || String(PAGE_SIZE), 10)));
+          const statusParam = url.searchParams.get("status") || "";
+          const ghParam = url.searchParams.get("github_state") || "";
+
+          // Parse comma-separated values
+          const statusFilters = statusParam ? statusParam.split(",").filter(Boolean) : [];
+          const ghFilters = ghParam ? ghParam.split(",").filter(Boolean) : [];
+
+          // Filter in-memory for multi-select
           const allPRs = db.transaction(() => queries.getAllPRs())();
-          const totalPages = Math.max(1, Math.ceil(allPRs.length / size));
+          let filtered = allPRs;
+          if (statusFilters.length > 0) {
+            filtered = filtered.filter((pr) => statusFilters.includes(pr.status));
+          }
+          if (ghFilters.length > 0) {
+            filtered = filtered.filter((pr) => ghFilters.includes(pr.github_state));
+          }
+          const totalPages = Math.max(1, Math.ceil(filtered.length / size));
           const offset = (page - 1) * size;
-          const pagePRs = allPRs.slice(offset, offset + size);
-          return Response.json({ html: renderPRRows(pagePRs), page, totalPages, totalItems: allPRs.length });
+          const pagePRs = filtered.slice(offset, offset + size);
+          return Response.json({ html: renderPRRows(pagePRs), page, totalPages, totalItems: filtered.length });
         }
 
         // GET /api/reviews/:id/events
