@@ -16,11 +16,12 @@ enum BadgeColor {
     }
 }
 
-final class StatusBarController {
+final class StatusBarController: NSObject {
     private var statusItem: NSStatusItem!
     private let db = DatabaseManager()
     private var refreshTimer: Timer?
     private var appearanceObserver: NSObjectProtocol?
+    private var activeProcesses: Set<Process> = []
 
     func setup() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -56,6 +57,7 @@ final class StatusBarController {
 
     @objc private func refresh() {
         let menu = NSMenu()
+        menu.autoenablesItems = false
 
         guard db.databaseExists else {
             let item = NSMenuItem(title: "No database found", action: nil, keyEquivalent: "")
@@ -121,7 +123,7 @@ final class StatusBarController {
         if pr.canReview {
             let reviewItem = NSMenuItem(title: pr.reviewActionLabel, action: #selector(triggerReview(_:)), keyEquivalent: "")
             reviewItem.target = self
-            reviewItem.representedObject = pr.url
+            reviewItem.representedObject = ["url": pr.url, "id": pr.id] as [String: Any]
             if let sym = NSImage(systemSymbolName: pr.reviewActionSymbol, accessibilityDescription: pr.reviewActionLabel) {
                 reviewItem.image = sym
             }
@@ -164,8 +166,40 @@ final class StatusBarController {
     }
 
     @objc private func triggerReview(_ sender: NSMenuItem) {
-        guard let prUrl = sender.representedObject as? String else { return }
+        debugLog("triggerReview called, representedObject type: \(type(of: sender.representedObject as Any))")
+
+        guard let info = sender.representedObject as? [String: Any] else {
+            debugLog("  FAILED: representedObject is not [String: Any]")
+            return
+        }
+        guard let prUrl = info["url"] as? String else {
+            debugLog("  FAILED: no 'url' key in info dict")
+            return
+        }
+
+        debugLog("  url=\(prUrl), id=\(String(describing: info["id"]))")
+
+        // Immediately update status to "accepted" so badge changes
+        if let prId = info["id"] as? Int {
+            db.updateStatus(id: prId, status: "accepted")
+        }
+
+        refresh()
         launchReview(url: prUrl)
+    }
+
+    private func debugLog(_ msg: String) {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let logPath = "\(home)/.local/share/the-reviewer/menubar-debug.log"
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] \(msg)\n"
+        if !FileManager.default.fileExists(atPath: logPath) {
+            FileManager.default.createFile(atPath: logPath, contents: line.data(using: .utf8))
+        } else if let handle = FileHandle(forWritingAtPath: logPath) {
+            handle.seekToEndOfFile()
+            handle.write(line.data(using: .utf8) ?? Data())
+            handle.closeFile()
+        }
     }
 
     @objc private func dismissPR(_ sender: NSMenuItem) {
@@ -199,17 +233,57 @@ final class StatusBarController {
             return
         }
 
+        // Log file for debugging
+        let logDir = "\(home)/.local/share/the-reviewer"
+        let logPath = "\(logDir)/menubar-review.log"
+        let logHandle: FileHandle
+        if FileManager.default.fileExists(atPath: logPath) {
+            logHandle = FileHandle(forWritingAtPath: logPath) ?? FileHandle.nullDevice
+            logHandle.seekToEndOfFile()
+        } else {
+            FileManager.default.createFile(atPath: logPath, contents: nil)
+            logHandle = FileHandle(forWritingAtPath: logPath) ?? FileHandle.nullDevice
+        }
+
+        // Write header
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        logHandle.write("[\(timestamp)] Launching review: \(url)\n".data(using: .utf8) ?? Data())
+
         let task = Process()
         task.executableURL = URL(fileURLWithPath: bunPath)
         task.currentDirectoryURL = URL(fileURLWithPath: cliDir)
         task.arguments = ["run", "src/index.ts", "review", url, "--force"]
-        task.environment = [
-            "HOME": home,
-            "PATH": "\(home)/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-        ]
-        task.standardOutput = FileHandle.nullDevice
-        task.standardError = FileHandle.nullDevice
-        try? task.run()
+        // Inherit full environment (needed for macOS Keychain access / Claude OAuth)
+        // and ensure bun/homebrew are in PATH
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "\(home)/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:\(env["PATH"] ?? "")"
+        env["HOME"] = home
+        task.environment = env
+        task.standardOutput = logHandle
+        task.standardError = logHandle
+
+        // Keep process alive and refresh on completion
+        activeProcesses.insert(task)
+        task.terminationHandler = { [weak self] proc in
+            DispatchQueue.main.async {
+                self?.activeProcesses.remove(proc)
+                self?.refresh()
+            }
+        }
+
+        do {
+            try task.run()
+        } catch {
+            logHandle.write("  ERROR: \(error.localizedDescription)\n".data(using: .utf8) ?? Data())
+            activeProcesses.remove(task)
+        }
+
+        // Schedule periodic refreshes to show status changes during review
+        for delay in [3.0, 8.0, 15.0, 30.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.refresh()
+            }
+        }
     }
 
     @objc private func openDashboard() {

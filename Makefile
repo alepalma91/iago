@@ -118,7 +118,8 @@ menubar-build: ## Build the menu bar app
 menubar-install: menubar-build ## Install menu bar binary
 	@mkdir -p $(HOME)/bin
 	cp $(MENUBAR_BIN) $(HOME)/bin/the-reviewer-bar
-	@echo "Installed to $(HOME)/bin/the-reviewer-bar"
+	codesign -s - -f $(HOME)/bin/the-reviewer-bar
+	@echo "Installed to $(HOME)/bin/the-reviewer-bar (ad-hoc signed)"
 
 menubar-run: menubar-build ## Run the menu bar app
 	$(MENUBAR_BIN)

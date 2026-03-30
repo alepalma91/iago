@@ -61,7 +61,7 @@ final class DatabaseManager {
 
     func fetchBadgeCounts() -> BadgeCounts {
         var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
             return BadgeCounts(errorCount: 0, actionCount: 0, reviewingCount: 0, doneUnopenedCount: 0)
         }
         defer { sqlite3_close(db) }
@@ -144,11 +144,29 @@ final class DatabaseManager {
         sqlite3_step(stmt)
     }
 
+    func updateStatus(id: Int, status: String) {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        let sql = "UPDATE pr_reviews SET status=?, updated_at=datetime('now') WHERE id=?"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, (status as NSString).utf8String, -1, nil)
+        sqlite3_bind_int(stmt, 2, Int32(id))
+        sqlite3_step(stmt)
+    }
+
     // MARK: - Private
 
     private func query(_ sql: String) -> [PRReview] {
         var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
             return []
         }
         defer { sqlite3_close(db) }
