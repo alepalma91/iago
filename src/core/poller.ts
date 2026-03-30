@@ -254,6 +254,27 @@ export async function fetchPendingReviews(sinceHours: number = 8): Promise<PRMet
   }
 }
 
+let _cachedGhUser: string | null | undefined;
+
+export async function getCurrentGithubUser(): Promise<string | null> {
+  if (_cachedGhUser !== undefined) return _cachedGhUser;
+  const proc = Bun.spawn(
+    ["gh", "api", "graphql", "-f", "query={ viewer { login } }"],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+  const stdout = await new Response(proc.stdout).text();
+  if ((await proc.exited) !== 0) {
+    _cachedGhUser = null;
+    return null;
+  }
+  try {
+    _cachedGhUser = JSON.parse(stdout)?.data?.viewer?.login ?? null;
+  } catch {
+    _cachedGhUser = null;
+  }
+  return _cachedGhUser;
+}
+
 export async function checkGhAuth(): Promise<boolean> {
   const proc = Bun.spawn(["gh", "auth", "status"], {
     stdout: "pipe",
@@ -268,6 +289,9 @@ export interface PRGitHubStatus {
   reviewDecision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
   isDraft: boolean;
   reviewRequestedByMe: boolean;
+  reviewedByMe: boolean;
+  myReviewState: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING" | null;
+  headRefOid: string;
 }
 
 /**
@@ -287,11 +311,18 @@ export async function fetchPRGitHubStatus(
         state
         isDraft
         reviewDecision
+        headRefOid
         reviewRequests(first: 20) {
           nodes {
             requestedReviewer {
               ... on User { login }
             }
+          }
+        }
+        reviews(last: 50) {
+          nodes {
+            author { login }
+            state
           }
         }
       }
@@ -324,11 +355,23 @@ export async function fetchPRGitHubStatus(
       (r: any) => r.requestedReviewer?.login === viewerLogin
     );
 
+    // Find the most recent review by the viewer (last one wins)
+    const myReviews = (pr.reviews?.nodes ?? []).filter(
+      (r: any) => r.author?.login === viewerLogin
+    );
+    const reviewedByMe = myReviews.length > 0;
+    const myReviewState = reviewedByMe
+      ? myReviews[myReviews.length - 1].state
+      : null;
+
     return {
       state: pr.state,
       reviewDecision: pr.reviewDecision ?? null,
       isDraft: pr.isDraft ?? false,
       reviewRequestedByMe,
+      reviewedByMe,
+      myReviewState,
+      headRefOid: pr.headRefOid ?? "",
     };
   } catch {
     return null;
