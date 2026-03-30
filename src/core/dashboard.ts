@@ -102,8 +102,8 @@ function renderPRRows(prs: PRReview[]): string {
         ${IN_PROGRESS.has(pr.status) ? `<span class="in-progress-indicator">
           <span class="spinner"></span> In progress
         </span>` : ""}
-        <button class="btn btn-ghost btn-sm" onclick="toggleDetail(${pr.id}, this)" title="Details">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>
+        <button class="btn ${pr.status === "done" || pr.status === "error" ? "btn-ghost" : "btn-ghost"} btn-sm" onclick="toggleDetail(${pr.id}, this)" title="View review output">
+          ${pr.status === "done" || pr.status === "error" ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8m8 4H8m2-8H8"/></svg> Output` : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>`}
         </button>
       </td>
     </tr>
@@ -771,6 +771,62 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       color: var(--accent);
     }
 
+    /* ── Sidebar ── */
+    .sidebar {
+      position: fixed;
+      top: 57px;
+      right: 0;
+      bottom: 0;
+      width: 420px;
+      background: var(--bg-raised);
+      border-left: 1px solid var(--border);
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar.open {
+      transform: translateX(0);
+    }
+    body.sidebar-open .main {
+      margin-right: 420px;
+      transition: margin-right 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .sidebar .chat-container {
+      height: 100%;
+      max-height: none;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+    }
+    .sidebar-toggle {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: var(--font);
+      color: var(--text-secondary);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .sidebar-toggle:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+      border-color: var(--text-muted);
+    }
+    .sidebar-toggle.active {
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
+      border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+
     /* ── Utilities ── */
     .text-muted { color: var(--text-muted); }
     .text-sm { font-size: 12px; }
@@ -784,9 +840,15 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     .mb-6 { margin-bottom: 24px; }
 
     /* ── Responsive ── */
+    @media (max-width: 1200px) {
+      .sidebar { width: 360px; }
+      body.sidebar-open .main { margin-right: 360px; }
+    }
     @media (max-width: 1024px) {
       .stat-grid { grid-template-columns: repeat(2, 1fr); }
       .chart-grid { grid-template-columns: 1fr; }
+      .sidebar { width: 100%; max-width: 420px; }
+      body.sidebar-open .main { margin-right: 0; }
     }
     @media (max-width: 768px) {
       .main { padding: 16px; }
@@ -814,12 +876,12 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
           Analytics
         </button>
-        <button class="nav-tab" onclick="switchTab('chat')" id="tab-btn-chat">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-          Chat
-        </button>
       </div>
       <div class="nav-right">
+        <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Chat Assistant">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          Chat
+        </button>
         <button class="btn btn-outline btn-sm" onclick="location.reload()" title="Refresh">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         </button>
@@ -872,38 +934,43 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       </div>
     </div>
 
-    <!-- Chat Tab -->
-    <div id="tab-chat" class="tab-panel">
-      <div class="chat-container">
-        <div class="chat-header">
-          <div class="chat-header-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-            Review Assistant
-          </div>
+  </div>
+
+  <!-- Chat Sidebar -->
+  <div class="sidebar" id="chat-sidebar">
+    <div class="chat-container">
+      <div class="chat-header">
+        <div class="chat-header-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          Review Assistant
+        </div>
+        <div style="display:flex;gap:4px">
           <button class="btn btn-ghost btn-sm" onclick="clearChat()">Clear</button>
-        </div>
-        <div class="chat-messages" id="chat-messages">
-          <div class="chat-welcome" id="chat-welcome">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;margin-bottom:12px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-            <h3>Review Assistant</h3>
-            <p>Ask questions about your code reviews, get summaries, or analyze patterns across your PRs.</p>
-            <p class="text-sm" style="margin-top:4px">Powered by your Claude session</p>
-            <div class="chat-suggestions">
-              <button class="chat-suggestion" onclick="askSuggestion(this)">Summarize recent reviews</button>
-              <button class="chat-suggestion" onclick="askSuggestion(this)">What are the common findings?</button>
-              <button class="chat-suggestion" onclick="askSuggestion(this)">Show error patterns</button>
-              <button class="chat-suggestion" onclick="askSuggestion(this)">Which repos need attention?</button>
-            </div>
-          </div>
-        </div>
-        <div class="chat-input-row">
-          <input type="text" id="chat-input" class="chat-input" placeholder="Ask about your reviews..."
-                 onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}">
-          <button class="chat-send" id="chat-send-btn" onclick="sendChat()">Send</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleSidebar()" title="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
         </div>
       </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-welcome" id="chat-welcome">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;margin-bottom:10px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          <h3>Review Assistant</h3>
+          <p>Ask about your code reviews, get summaries, or analyze patterns.</p>
+          <p class="text-sm" style="margin-top:4px">Powered by your Claude session</p>
+          <div class="chat-suggestions">
+            <button class="chat-suggestion" onclick="askSuggestion(this)">Summarize recent reviews</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">Common findings?</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">Show error patterns</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">Repos needing attention?</button>
+          </div>
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" class="chat-input" placeholder="Ask about your reviews..."
+               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}">
+        <button class="chat-send" id="chat-send-btn" onclick="sendChat()">Send</button>
+      </div>
     </div>
-
   </div>
 
   <script>
@@ -924,9 +991,28 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
         analyticsLoaded = true;
         loadAnalytics();
       }
-      if (tab === 'chat') {
-        document.getElementById('chat-input').focus();
+    }
+
+    // ── Sidebar ──
+    function toggleSidebar() {
+      var sidebar = document.getElementById('chat-sidebar');
+      var toggle = document.getElementById('sidebar-toggle');
+      var isOpen = sidebar.classList.toggle('open');
+      document.body.classList.toggle('sidebar-open', isOpen);
+      toggle.classList.toggle('active', isOpen);
+      if (isOpen) {
+        sessionStorage.setItem('sidebar-open', '1');
+        setTimeout(function() { document.getElementById('chat-input').focus(); }, 300);
+      } else {
+        sessionStorage.setItem('sidebar-open', '0');
       }
+    }
+
+    // Restore sidebar state
+    if (sessionStorage.getItem('sidebar-open') === '1') {
+      document.getElementById('chat-sidebar').classList.add('open');
+      document.body.classList.add('sidebar-open');
+      document.getElementById('sidebar-toggle').classList.add('active');
     }
 
     // ── Pagination ──
