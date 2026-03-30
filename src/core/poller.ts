@@ -188,9 +188,7 @@ export function parseGraphQLResponse(raw: string, repo: string): PRMetadata | nu
   };
 }
 
-export async function fetchPendingReviews(sinceHours: number = 8): Promise<PRMetadata[]> {
-  const since = new Date(Date.now() - sinceHours * 3600_000).toISOString();
-
+export async function fetchPendingReviews(_sinceHours: number = 8): Promise<PRMetadata[]> {
   const query = `query($searchQuery: String!, $first: Int!) {
     search(query: $searchQuery, type: ISSUE, first: $first) {
       nodes {
@@ -213,7 +211,7 @@ export async function fetchPendingReviews(sinceHours: number = 8): Promise<PRMet
     }
   }`;
 
-  const searchQuery = `type:pr review-requested:@me is:open -is:draft updated:>=${since}`;
+  const searchQuery = `type:pr review-requested:@me is:open -is:draft`;
 
   const proc = Bun.spawn(
     [
