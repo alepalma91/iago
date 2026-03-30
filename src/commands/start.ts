@@ -1,7 +1,7 @@
 import { loadConfig, getDataDir } from "../core/config.js";
 import { createDatabase } from "../db/database.js";
 import { createQueries } from "../db/queries.js";
-import { pollNotifications, enrichPR, fetchPendingReviews, createInitialPollState, checkGhAuth } from "../core/poller.js";
+import { pollNotifications, enrichPR, fetchPendingReviews, createInitialPollState, checkGhAuth, fetchPRGitHubStatus } from "../core/poller.js";
 import { handleNewReview } from "../core/pipeline.js";
 import { sendPRNotification } from "../core/notifier.js";
 import { writePidFile, removePidFile } from "../core/pid.js";
@@ -214,6 +214,27 @@ export async function startCommand(_args: string[]): Promise<void> {
           });
         }
       }
+      // Sync tracked PRs that may have been reviewed externally
+      const activePRs = queries.getActivePRs();
+      for (const pr of activePRs) {
+        if (pr.status !== "notified" && pr.status !== "detected") continue;
+        try {
+          const ghStatus = await fetchPRGitHubStatus(pr.repo, pr.pr_number);
+          if (!ghStatus) continue;
+
+          if (ghStatus.state === "MERGED" || ghStatus.state === "CLOSED") {
+            console.log(`\n  [sync] ${pr.repo}#${pr.pr_number}: ${ghStatus.state.toLowerCase()} on GitHub → dismissed`);
+            queries.updatePRStatus(pr.id, "dismissed");
+            queries.insertEvent(pr.id, "dismissed", `PR ${ghStatus.state.toLowerCase()} on GitHub`);
+          } else if (!ghStatus.reviewRequestedByMe) {
+            // Review request was removed (someone else reviewed, or author dismissed)
+            console.log(`\n  [sync] ${pr.repo}#${pr.pr_number}: review no longer requested → dismissed`);
+            queries.updatePRStatus(pr.id, "dismissed");
+            queries.insertEvent(pr.id, "dismissed", "Review no longer requested from us");
+          }
+        } catch {}
+      }
+
     } catch (err: any) {
       console.error(`[${new Date().toISOString()}] Poll error: ${err.message}`);
     }

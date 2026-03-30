@@ -262,3 +262,75 @@ export async function checkGhAuth(): Promise<boolean> {
   const exitCode = await proc.exited;
   return exitCode === 0;
 }
+
+export interface PRGitHubStatus {
+  state: "OPEN" | "CLOSED" | "MERGED";
+  reviewDecision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
+  isDraft: boolean;
+  reviewRequestedByMe: boolean;
+}
+
+/**
+ * Check the current GitHub status of a PR — whether it's still open,
+ * merged, or closed, and whether a review has been submitted.
+ */
+export async function fetchPRGitHubStatus(
+  repo: string,
+  prNumber: number
+): Promise<PRGitHubStatus | null> {
+  const [owner, repoName] = repo.split("/");
+  if (!owner || !repoName) return null;
+
+  const query = `query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        state
+        isDraft
+        reviewDecision
+        reviewRequests(first: 20) {
+          nodes {
+            requestedReviewer {
+              ... on User { login }
+            }
+          }
+        }
+      }
+    }
+    viewer { login }
+  }`;
+
+  const proc = Bun.spawn(
+    [
+      "gh", "api", "graphql",
+      "-f", `query=${query}`,
+      "-F", `owner=${owner}`,
+      "-F", `repo=${repoName}`,
+      "-F", `number=${prNumber}`,
+    ],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+
+  const stdout = await new Response(proc.stdout).text();
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) return null;
+
+  try {
+    const data = JSON.parse(stdout);
+    const pr = data?.data?.repository?.pullRequest;
+    const viewerLogin = data?.data?.viewer?.login;
+    if (!pr) return null;
+
+    const reviewRequestedByMe = (pr.reviewRequests?.nodes ?? []).some(
+      (r: any) => r.requestedReviewer?.login === viewerLogin
+    );
+
+    return {
+      state: pr.state,
+      reviewDecision: pr.reviewDecision ?? null,
+      isDraft: pr.isDraft ?? false,
+      reviewRequestedByMe,
+    };
+  } catch {
+    return null;
+  }
+}
