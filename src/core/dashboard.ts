@@ -1822,6 +1822,7 @@ RULES:
 
   const server = Bun.serve({
     port: config.dashboard.port,
+    idleTimeout: 255, // max value — prevents SSE connections from being killed
     async fetch(req) {
       try {
         const url = new URL(req.url);
