@@ -4,7 +4,7 @@ import { createQueries } from "../../src/db/queries.js";
 import { createMCPServer } from "../../src/mcp/server.js";
 import { unlinkSync } from "fs";
 
-const TEST_DB = "/tmp/the-reviewer-test-mcp.sqlite";
+const TEST_DB = "/tmp/iago-test-mcp.sqlite";
 
 function cleanup() {
   try { unlinkSync(TEST_DB); } catch {}

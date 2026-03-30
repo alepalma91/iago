@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.the-reviewer.daemon</string>
+  <string>com.iago.daemon</string>
 
   <key>ProgramArguments</key>
   <array>
@@ -40,8 +40,8 @@
   <string>Background</string>
 
   <key>StandardOutPath</key>
-  <string>__HOME__/.local/share/the-reviewer/daemon.log</string>
+  <string>__HOME__/.local/share/iago/daemon.log</string>
   <key>StandardErrorPath</key>
-  <string>__HOME__/.local/share/the-reviewer/daemon.log</string>
+  <string>__HOME__/.local/share/iago/daemon.log</string>
 </dict>
 </plist>

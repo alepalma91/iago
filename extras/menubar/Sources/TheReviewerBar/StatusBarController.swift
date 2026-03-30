@@ -221,7 +221,7 @@ final class StatusBarController: NSObject {
 
     private func debugLog(_ msg: String) {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let logPath = "\(home)/.local/share/the-reviewer/menubar-debug.log"
+        let logPath = "\(home)/.local/share/iago/menubar-debug.log"
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let line = "[\(timestamp)] \(msg)\n"
         if !FileManager.default.fileExists(atPath: logPath) {
@@ -244,8 +244,8 @@ final class StatusBarController: NSObject {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let candidates = [
             "\(home)/Documents/AI/the-reviwer",
-            "\(home)/the-reviewer",
-            "\(home)/src/the-reviewer",
+            "\(home)/iago",
+            "\(home)/src/iago",
         ]
         var cliDir: String?
         for dir in candidates {
@@ -265,7 +265,7 @@ final class StatusBarController: NSObject {
         }
 
         // Log file for debugging
-        let logDir = "\(home)/.local/share/the-reviewer"
+        let logDir = "\(home)/.local/share/iago"
         let logPath = "\(logDir)/menubar-review.log"
         let logHandle: FileHandle
         if FileManager.default.fileExists(atPath: logPath) {
@@ -415,6 +415,6 @@ final class StatusBarController: NSObject {
         if let data = svg.data(using: .utf8), let img = NSImage(data: data) {
             return img
         }
-        return NSImage(systemSymbolName: "bird", accessibilityDescription: "The Reviewer") ?? NSImage()
+        return NSImage(systemSymbolName: "bird", accessibilityDescription: "Iago") ?? NSImage()
     }
 }

@@ -116,7 +116,7 @@ describe("launchAllTools", () => {
 });
 
 describe("writeOutput", () => {
-  const testDir = "/tmp/the-reviewer-output-test";
+  const testDir = "/tmp/iago-output-test";
 
   it("should write output to file", () => {
     rmSync(testDir, { recursive: true, force: true });

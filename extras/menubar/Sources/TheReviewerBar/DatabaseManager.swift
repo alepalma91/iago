@@ -6,7 +6,7 @@ final class DatabaseManager {
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        dbPath = "\(home)/.local/share/the-reviewer/the-reviewer.db"
+        dbPath = "\(home)/.local/share/iago/iago.db"
     }
 
     var databaseExists: Bool {

@@ -6,7 +6,7 @@ import type { PRMetadata } from "../../src/types/index.js";
 import type { PipelineContext } from "../../src/core/pipeline.js";
 import { DEFAULT_CONFIG } from "../../src/core/config.js";
 
-const TEST_DB = "/tmp/the-reviewer-pipeline-test.sqlite";
+const TEST_DB = "/tmp/iago-pipeline-test.sqlite";
 
 function cleanup() {
   try { unlinkSync(TEST_DB); } catch {}

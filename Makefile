@@ -4,13 +4,13 @@ BUN := bun
 CLI := $(BUN) run src/index.ts
 
 # LaunchAgent config
-DAEMON_LABEL := com.the-reviewer.daemon
-MENUBAR_LABEL := com.the-reviewer.menubar
+DAEMON_LABEL := com.iago.daemon
+MENUBAR_LABEL := com.iago.menubar
 LAUNCH_DIR := $(HOME)/Library/LaunchAgents
 DAEMON_PLIST := $(LAUNCH_DIR)/$(DAEMON_LABEL).plist
 MENUBAR_PLIST := $(LAUNCH_DIR)/$(MENUBAR_LABEL).plist
 PROJECT_DIR := $(shell pwd)
-LOG_FILE := $(HOME)/.local/share/the-reviewer/daemon.log
+LOG_FILE := $(HOME)/.local/share/iago/daemon.log
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -96,14 +96,14 @@ swiftbar-install: ## Install SwiftBar menu bar plugin
 		exit 1; \
 	fi
 	@mkdir -p "$(SWIFTBAR_DIR)"
-	cp extras/swiftbar/the-reviewer.30s.sh "$(SWIFTBAR_DIR)/the-reviewer.30s.sh"
-	chmod +x "$(SWIFTBAR_DIR)/the-reviewer.30s.sh"
-	@echo "Installed to $(SWIFTBAR_DIR)/the-reviewer.30s.sh"
+	cp extras/swiftbar/iago.30s.sh "$(SWIFTBAR_DIR)/iago.30s.sh"
+	chmod +x "$(SWIFTBAR_DIR)/iago.30s.sh"
+	@echo "Installed to $(SWIFTBAR_DIR)/iago.30s.sh"
 
 # ── Menu Bar App ────────────────────────────────────────────
 
 MENUBAR_SRC := extras/menubar/Sources/TheReviewerBar
-MENUBAR_BIN := extras/menubar/.build/TheReviewerBar
+MENUBAR_BIN := extras/menubar/.build/IagoBar
 MENUBAR_SRCS := $(MENUBAR_SRC)/main.swift $(MENUBAR_SRC)/Models.swift $(MENUBAR_SRC)/DatabaseManager.swift $(MENUBAR_SRC)/StatusBarController.swift
 
 menubar-build: ## Build the menu bar app
@@ -117,9 +117,9 @@ menubar-build: ## Build the menu bar app
 
 menubar-install: menubar-build ## Install menu bar binary
 	@mkdir -p $(HOME)/bin
-	cp $(MENUBAR_BIN) $(HOME)/bin/the-reviewer-bar
-	codesign -s - -f $(HOME)/bin/the-reviewer-bar
-	@echo "Installed to $(HOME)/bin/the-reviewer-bar (ad-hoc signed)"
+	cp $(MENUBAR_BIN) $(HOME)/bin/iago-bar
+	codesign -s - -f $(HOME)/bin/iago-bar
+	@echo "Installed to $(HOME)/bin/iago-bar (ad-hoc signed)"
 
 menubar-run: menubar-build ## Run the menu bar app
 	$(MENUBAR_BIN)
@@ -131,7 +131,7 @@ build: install menubar-build ## Build everything (bun deps + menu bar binary)
 
 install-all: build menubar-install ## Build + install binary + install LaunchAgent plists
 	@mkdir -p "$(LAUNCH_DIR)"
-	@mkdir -p "$(HOME)/.local/share/the-reviewer"
+	@mkdir -p "$(HOME)/.local/share/iago"
 	@# Resolve tool paths for daemon PATH
 	@BUN_PATH=$$(which bun) && \
 	GH_DIR=$$(dirname $$(which gh 2>/dev/null) 2>/dev/null || echo "") && \
@@ -144,9 +144,9 @@ install-all: build menubar-install ## Build + install binary + install LaunchAge
 	    -e "s|__PROJECT_DIR__|$(PROJECT_DIR)|g" \
 	    -e "s|__AGENT_PATH__|$$AGENT_PATH|g" \
 	    -e "s|__HOME__|$(HOME)|g" \
-	    extras/launchd/com.the-reviewer.daemon.plist > "$(DAEMON_PLIST)" && \
+	    extras/launchd/com.iago.daemon.plist > "$(DAEMON_PLIST)" && \
 	sed -e "s|__HOME__|$(HOME)|g" \
-	    extras/launchd/com.the-reviewer.menubar.plist > "$(MENUBAR_PLIST)" && \
+	    extras/launchd/com.iago.menubar.plist > "$(MENUBAR_PLIST)" && \
 	echo "LaunchAgent plists installed to $(LAUNCH_DIR)" && \
 	echo "Run 'make launchctl-load' to start auto-launch."
 
@@ -177,5 +177,5 @@ uninstall: ## Stop + unload + remove plists + remove binary (preserves data)
 	-@launchctl unload "$(DAEMON_PLIST)" 2>/dev/null || true
 	-@launchctl unload "$(MENUBAR_PLIST)" 2>/dev/null || true
 	-@rm -f "$(DAEMON_PLIST)" "$(MENUBAR_PLIST)"
-	-@rm -f "$(HOME)/bin/the-reviewer-bar"
-	@echo "Uninstalled. Data in ~/.local/share/the-reviewer/ preserved."
+	-@rm -f "$(HOME)/bin/iago-bar"
+	@echo "Uninstalled. Data in ~/.local/share/iago/ preserved."

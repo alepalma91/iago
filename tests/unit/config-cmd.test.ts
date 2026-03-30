@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-const TEST_DIR = "/tmp/the-reviewer-config-cmd-test";
+const TEST_DIR = "/tmp/iago-config-cmd-test";
 
 describe("config init", () => {
   const configDir = join(TEST_DIR, "config");

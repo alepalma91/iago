@@ -13,7 +13,7 @@ function initDB(): { queries: Queries; close: () => void } {
   const config = loadConfig();
   const dataDir = getDataDir(config);
   mkdirSync(dataDir, { recursive: true });
-  const db = createDatabase(join(dataDir, "the-reviewer.db"));
+  const db = createDatabase(join(dataDir, "iago.db"));
   return { queries: createQueries(db), close: () => db.close() };
 }
 
@@ -28,7 +28,7 @@ function formatPR(pr: PRReview): string {
 
 export function createMCPServer() {
   const server = new McpServer({
-    name: "the-reviewer",
+    name: "iago",
     version: "0.1.0",
   });
 
@@ -175,5 +175,5 @@ export async function startMCPServer(): Promise<void> {
   const server = createMCPServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("the-reviewer MCP server started on stdio");
+  console.error("iago MCP server started on stdio");
 }

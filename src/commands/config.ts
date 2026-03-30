@@ -4,12 +4,12 @@ import { homedir } from "os";
 import { loadConfig, resolveHome } from "../core/config.js";
 import { stringify as stringifyYAML } from "yaml";
 
-const CONFIG_DIR = join(homedir(), ".config", "the-reviewer");
+const CONFIG_DIR = join(homedir(), ".config", "iago");
 const CONFIG_PATH = join(CONFIG_DIR, "config.yaml");
 const PROMPTS_DIR = join(CONFIG_DIR, "prompts");
 
-const DEFAULT_CONFIG_YAML = `# the-reviewer configuration
-# See: https://github.com/the-reviewer/docs
+const DEFAULT_CONFIG_YAML = `# iago configuration
+# See: https://github.com/iago/docs
 
 github:
   # poll_interval: "60s"
@@ -20,7 +20,7 @@ github:
 
 sandbox:
   # strategy: worktree
-  # base_dir: ~/.local/share/the-reviewer
+  # base_dir: ~/.local/share/iago
   # ttl: "24h"
 
 launchers:
@@ -38,13 +38,13 @@ launchers:
   #     enabled: true
 
 prompts:
-  # system_prompt: ~/.config/the-reviewer/prompts/system.md
-  # instructions: ~/.config/the-reviewer/prompts/instructions.md
+  # system_prompt: ~/.config/iago/prompts/system.md
+  # instructions: ~/.config/iago/prompts/instructions.md
   # default_techniques: []
   # techniques:
   #   security:
   #     description: "Security-focused review"
-  #     prompt_file: ~/.config/the-reviewer/prompts/security.md
+  #     prompt_file: ~/.config/iago/prompts/security.md
 
 notifications:
   native: true
@@ -90,9 +90,9 @@ export async function configCommand(args: string[]): Promise<void> {
         console.error(`Unknown config subcommand: ${subcommand}`);
       }
       console.log(`Usage:
-  the-reviewer config init       Create default config files
-  the-reviewer config validate   Check config for errors
-  the-reviewer config show       Print resolved config`);
+  iago config init       Create default config files
+  iago config validate   Check config for errors
+  iago config show       Print resolved config`);
       if (subcommand) process.exit(1);
       break;
   }

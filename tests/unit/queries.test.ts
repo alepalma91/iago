@@ -4,7 +4,7 @@ import { createQueries } from "../../src/db/queries.js";
 import { unlinkSync } from "fs";
 import type { Database } from "bun:sqlite";
 
-const TEST_DB = "/tmp/the-reviewer-test-queries.sqlite";
+const TEST_DB = "/tmp/iago-test-queries.sqlite";
 
 function cleanup() {
   try { unlinkSync(TEST_DB); } catch {}

@@ -36,7 +36,7 @@ function truncate(str: string, max: number): string {
 export async function statusCommand(): Promise<void> {
   const config = loadConfig();
   const dataDir = getDataDir(config);
-  const dbPath = join(dataDir, "the-reviewer.db");
+  const dbPath = join(dataDir, "iago.db");
 
   let db;
   try {

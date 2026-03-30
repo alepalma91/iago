@@ -1,10 +1,10 @@
 {
-  "name": "the-reviewer",
+  "name": "iago",
   "version": "0.1.0",
-  "description": "A macOS CLI daemon that watches GitHub for PR review assignments and launches AI review tools",
+  "description": "AI-powered PR review daemon for macOS",
   "type": "module",
   "bin": {
-    "the-reviewer": "src/index.ts"
+    "iago": "src/index.ts"
   },
   "scripts": {
     "start": "bun run src/index.ts start",

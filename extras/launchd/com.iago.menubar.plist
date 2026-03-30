@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.the-reviewer.menubar</string>
+  <string>com.iago.menubar</string>
 
   <key>ProgramArguments</key>
   <array>
-    <string>__HOME__/bin/the-reviewer-bar</string>
+    <string>__HOME__/bin/iago-bar</string>
   </array>
 
   <key>EnvironmentVariables</key>

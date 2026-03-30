@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "the-reviewer": {
+    "iago": {
       "type": "stdio",
       "command": "/Users/apalma/.bun/bin/bun",
       "args": ["run", "src/index.ts", "mcp"]

@@ -1,0 +1,81 @@
+# iago — AI-powered PR review daemon configuration
+# Location: ~/.config/iago/config.yaml
+
+github:
+  poll_interval: "60s"          # How often to check for new PRs
+  trigger_reasons:
+    - review_requested          # What events trigger a review
+  # watched_repos: []           # Only review these repos (empty = all)
+  # ignored_repos: []           # Never review these repos
+
+sandbox:
+  strategy: worktree            # "worktree" or "shallow-clone"
+  # base_dir: ~/.local/share/iago
+  # ttl: "24h"                  # How long to keep worktrees
+  # cleanup_on_start: true
+  # fetch_pr_refs: true
+
+launchers:
+  max_parallel: 3               # Max concurrent tool runs
+  default_tools:
+    - claude
+  tools:
+    claude:
+      display_name: "Claude Code"
+      command: claude
+      args: ["--dangerously-skip-permissions", "-p", "{{prompt}}", "--output-format", "text"]
+      stdin_mode: none
+      output_mode: stdout
+      timeout: "5m"
+      enabled: true
+
+prompts:
+  # system_prompt: ~/.config/iago/prompts/system.md
+  # instructions: ~/.config/iago/prompts/instructions.md
+  # default_techniques: []
+  # techniques:
+  #   security:
+  #     description: "Security-focused review"
+  #     prompt_file: ~/.config/iago/prompts/security.md
+
+notifications:
+  native: true
+  on_new_pr: true
+  on_review_complete: true
+  on_review_error: true
+  sound: "default"
+
+dashboard:
+  enabled: true
+  port: 1460
+  # auto_open: false
+
+# ── Per-repo overrides ────────────────────────────────────────────────
+# repos:
+#   "org/my-repo":
+#     auto_review: true           # Skip notification, start review immediately
+#     prompts:
+#       instructions: "~/.config/iago/prompts/my-repo-instructions.md"
+#       techniques:
+#         _strategy: extend       # Append to default techniques
+#         custom-review:
+#           description: "Custom review technique"
+#           prompt_file: "~/.config/iago/prompts/custom.md"
+#       default_techniques:
+#         _strategy: extend
+#         _values: ["custom-review"]
+#     launchers:
+#       tools:
+#         claude:
+#           args:
+#             _strategy: override  # Replace args entirely
+#             _values: ["--dangerously-skip-permissions", "-p", "{{prompt}}"]
+#
+#   "org/platform-*":             # Glob pattern
+#     auto_review: false
+#     prompts:
+#       instructions: "~/.config/iago/prompts/platform-instructions.md"
+#
+#   "*":                          # Wildcard fallback (lowest priority)
+#     notifications:
+#       sound: "default"

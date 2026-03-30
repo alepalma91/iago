@@ -49,17 +49,17 @@ async function main() {
 }
 
 function printHelp() {
-  console.log(`the-reviewer — AI-powered PR review daemon
+  console.log(`iago — AI-powered PR review daemon
 
 Usage:
-  the-reviewer start     Start the daemon (poll for PR reviews)
-  the-reviewer stop      Stop the running daemon
-  the-reviewer status    Show active PR reviews
-  the-reviewer review    Manually review a PR by URL
-  the-reviewer config    Manage configuration (init, validate, show)
-  the-reviewer dashboard Start the dashboard server
-  the-reviewer mcp       Start the MCP server (stdio transport)
-  the-reviewer help      Show this help message`);
+  iago start     Start the daemon (poll for PR reviews)
+  iago stop      Stop the running daemon
+  iago status    Show active PR reviews
+  iago review    Manually review a PR by URL
+  iago config    Manage configuration (init, validate, show)
+  iago dashboard Start the dashboard server
+  iago mcp       Start the MCP server (stdio transport)
+  iago help      Show this help message`);
 }
 
 main().catch((err) => {

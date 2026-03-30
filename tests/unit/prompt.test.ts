@@ -50,7 +50,7 @@ describe("getDefaultInstructions", () => {
 });
 
 describe("loadPromptFile", () => {
-  const testDir = "/tmp/the-reviewer-prompt-test";
+  const testDir = "/tmp/iago-prompt-test";
 
   it("should return empty string for missing file", () => {
     expect(loadPromptFile("/tmp/nonexistent-prompt.md")).toBe("");

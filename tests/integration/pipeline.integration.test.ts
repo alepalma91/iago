@@ -8,7 +8,7 @@ import { DEFAULT_CONFIG } from "../../src/core/config.js";
 import { unlinkSync } from "fs";
 import type { PRMetadata, LauncherProfile } from "../../src/types/index.js";
 
-const TEST_DB = "/tmp/the-reviewer-e2e-test.sqlite";
+const TEST_DB = "/tmp/iago-e2e-test.sqlite";
 
 function cleanup() {
   try { unlinkSync(TEST_DB); } catch {}

@@ -1,4 +1,4 @@
-import { loadConfig, getDataDir } from "../core/config.js";
+import { loadConfig, getDataDir, shouldAutoReview } from "../core/config.js";
 import { createDatabase } from "../db/database.js";
 import { createQueries } from "../db/queries.js";
 import { pollNotifications, enrichPR, fetchPendingReviews, createInitialPollState, checkGhAuth, fetchPRGitHubStatus } from "../core/poller.js";
@@ -32,12 +32,12 @@ export async function startCommand(_args: string[]): Promise<void> {
   // Check gh auth
   const authed = await checkGhAuth();
   if (!authed) {
-    console.error("the-reviewer: GitHub CLI not authenticated. Run `gh auth login` first.");
+    console.error("iago: GitHub CLI not authenticated. Run `gh auth login` first.");
     process.exit(1);
   }
 
   // Set up database
-  const dbPath = join(dataDir, "the-reviewer.db");
+  const dbPath = join(dataDir, "iago.db");
   const db = createDatabase(dbPath);
   const queries = createQueries(db);
 
@@ -47,7 +47,7 @@ export async function startCommand(_args: string[]): Promise<void> {
   const pollIntervalMs = parseDuration(config.github.poll_interval);
   const pollState = createInitialPollState();
 
-  console.log("the-reviewer: starting daemon...");
+  console.log("iago: starting daemon...");
   console.log(`  Poll interval: ${config.github.poll_interval}`);
   console.log(`  Tools: ${config.launchers.default_tools.join(", ")}`);
   console.log(`  Max parallel: ${config.launchers.max_parallel}`);
@@ -85,8 +85,9 @@ export async function startCommand(_args: string[]): Promise<void> {
       );
 
       if (newPRs.length > 0) {
-        console.log(`  Sending notifications for ${newPRs.length} new PR(s)...\n`);
+        console.log(`  Processing ${newPRs.length} new PR(s)...\n`);
         for (const pr of newPRs) {
+          const autoReview = shouldAutoReview(config, pr.repo);
           const row = queries.insertPR({
             pr_number: pr.number,
             repo: pr.repo,
@@ -97,16 +98,28 @@ export async function startCommand(_args: string[]): Promise<void> {
             base_branch: pr.base_branch,
           });
           queries.insertEvent(row.id, "detected", "Found during startup catch-up");
-          queries.updatePRStatus(row.id, "notified");
 
-          console.log(`  [notify] ${pr.repo}#${pr.number}: ${pr.title}`);
-          await sendPRNotification({
-            repo: pr.repo,
-            pr_number: pr.number,
-            title: pr.title,
-            author: pr.author,
-            url: pr.url,
-          });
+          if (autoReview) {
+            console.log(`  [auto-review] ${pr.repo}#${pr.number}: ${pr.title}`);
+            queries.updatePRStatus(row.id, "accepted");
+            queries.insertEvent(row.id, "accepted", "Auto-review enabled for this repo");
+            handleNewReview(
+              { ...pr, number: pr.number },
+              { config, queries }
+            ).catch((err) => {
+              console.error(`  [auto-review] Error: ${err.message}`);
+            });
+          } else {
+            queries.updatePRStatus(row.id, "notified");
+            console.log(`  [notify] ${pr.repo}#${pr.number}: ${pr.title}`);
+            await sendPRNotification({
+              repo: pr.repo,
+              pr_number: pr.number,
+              title: pr.title,
+              author: pr.author,
+              url: pr.url,
+            });
+          }
         }
       }
 
@@ -152,7 +165,7 @@ export async function startCommand(_args: string[]): Promise<void> {
 
   // Graceful shutdown
   const shutdown = () => {
-    console.log("\nthe-reviewer: shutting down...");
+    console.log("\niago: shutting down...");
     if (dashboardServer) {
       dashboardServer.stop();
     }
@@ -192,6 +205,7 @@ export async function startCommand(_args: string[]): Promise<void> {
         console.log(`\n  [${ts}] Found ${newPRs.length} new review request(s)`);
 
         for (const pr of newPRs) {
+          const autoReview = shouldAutoReview(config, pr.repo);
           const row = queries.insertPR({
             pr_number: pr.number,
             repo: pr.repo,
@@ -202,16 +216,28 @@ export async function startCommand(_args: string[]): Promise<void> {
             base_branch: pr.base_branch,
           });
           queries.insertEvent(row.id, "detected", "Found during poll");
-          queries.updatePRStatus(row.id, "notified");
 
-          console.log(`  [notify] ${pr.repo}#${pr.number}: ${pr.title}`);
-          await sendPRNotification({
-            repo: pr.repo,
-            pr_number: pr.number,
-            title: pr.title,
-            author: pr.author,
-            url: pr.url,
-          });
+          if (autoReview) {
+            console.log(`  [auto-review] ${pr.repo}#${pr.number}: ${pr.title}`);
+            queries.updatePRStatus(row.id, "accepted");
+            queries.insertEvent(row.id, "accepted", "Auto-review enabled for this repo");
+            handleNewReview(
+              { ...pr, number: pr.number },
+              { config, queries }
+            ).catch((err) => {
+              console.error(`  [auto-review] Error: ${err.message}`);
+            });
+          } else {
+            queries.updatePRStatus(row.id, "notified");
+            console.log(`  [notify] ${pr.repo}#${pr.number}: ${pr.title}`);
+            await sendPRNotification({
+              repo: pr.repo,
+              pr_number: pr.number,
+              title: pr.title,
+              author: pr.author,
+              url: pr.url,
+            });
+          }
         }
       }
       // Sync tracked PRs that may have been reviewed externally

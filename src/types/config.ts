@@ -1,3 +1,10 @@
+export interface RepoConfig {
+  auto_review?: boolean;
+  prompts?: Partial<PromptsConfig>;
+  launchers?: Partial<LaunchersConfig>;
+  notifications?: Partial<NotificationsConfig>;
+}
+
 export interface AppConfig {
   github: GitHubConfig;
   sandbox: SandboxConfig;
@@ -5,6 +12,7 @@ export interface AppConfig {
   prompts: PromptsConfig;
   notifications: NotificationsConfig;
   dashboard: DashboardConfig;
+  repos: Record<string, RepoConfig>;
 }
 
 export interface GitHubConfig {

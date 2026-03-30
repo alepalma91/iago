@@ -7,6 +7,7 @@ export type {
 
 export type {
   AppConfig,
+  RepoConfig,
   GitHubConfig,
   SandboxConfig,
   LaunchersConfig,

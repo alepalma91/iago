@@ -8,4 +8,4 @@ coverage/
 *.tgz
 
 # Local config
-.the-reviewer/
+.iago/

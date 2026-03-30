@@ -7,7 +7,7 @@ import type { AppConfig } from "../../src/types/index.js";
 
 let testCounter = 0;
 function getTestDB() {
-  return `/tmp/the-reviewer-integ-dash-${++testCounter}.sqlite`;
+  return `/tmp/iago-integ-dash-${++testCounter}.sqlite`;
 }
 
 function cleanupDB(path: string) {

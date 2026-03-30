@@ -3,7 +3,7 @@ import { createDatabase } from "../../src/db/database.js";
 import { unlinkSync } from "fs";
 import { Database } from "bun:sqlite";
 
-const TEST_DB = "/tmp/the-reviewer-test-db.sqlite";
+const TEST_DB = "/tmp/iago-test-db.sqlite";
 
 function cleanup() {
   try {

@@ -18,8 +18,8 @@ function parseGitHubPRUrl(url: string): { owner: string; repo: string; number: n
 export async function reviewCommand(args: string[]): Promise<void> {
   const prUrl = args[0];
   if (!prUrl) {
-    console.error("Usage: the-reviewer review <pr-url>");
-    console.error("Example: the-reviewer review https://github.com/owner/repo/pull/42");
+    console.error("Usage: iago review <pr-url>");
+    console.error("Example: iago review https://github.com/owner/repo/pull/42");
     process.exit(1);
   }
 
@@ -52,7 +52,7 @@ export async function reviewCommand(args: string[]): Promise<void> {
   mkdirSync(dataDir, { recursive: true });
 
   // Set up database
-  const dbPath = join(dataDir, "the-reviewer.db");
+  const dbPath = join(dataDir, "iago.db");
   const db = createDatabase(dbPath);
   const queries = createQueries(db);
 

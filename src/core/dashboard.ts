@@ -175,7 +175,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>the-reviewer</title>
+  <title>iago</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -864,7 +864,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     <div class="nav-inner">
       <a href="/" class="nav-brand">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-        the-reviewer
+        iago
       </a>
       <div class="nav-tabs">
         <button class="nav-tab active" onclick="switchTab('reviews')" id="tab-btn-reviews">
@@ -1417,7 +1417,7 @@ export function createDashboardServer(
       return `- ${t.tool_name}: ${t.total} runs, ${t.success} success, avg ${(t.avg_duration_ms / 1000).toFixed(1)}s`;
     }).join("\n");
 
-    return `You are an AI assistant embedded in "the-reviewer", a code review automation tool. Your job is to help the user understand their review history, patterns, and insights.
+    return `You are an AI assistant embedded in "iago", a code review automation tool. Your job is to help the user understand their review history, patterns, and insights.
 
 REVIEW STATISTICS:
 - Total reviews: ${stats.totalReviews}

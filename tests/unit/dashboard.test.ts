@@ -7,7 +7,7 @@ import type { AppConfig } from "../../src/types/index.js";
 
 let testCounter = 0;
 function getTestDB() {
-  return `/tmp/the-reviewer-test-dash-${++testCounter}.sqlite`;
+  return `/tmp/iago-test-dash-${++testCounter}.sqlite`;
 }
 
 function cleanupDB(path: string) {
@@ -63,7 +63,7 @@ describe("dashboard server", () => {
     expect(res.headers.get("content-type")).toContain("text/html");
     const html = await res.text();
     expect(html).toContain("htmx.org");
-    expect(html).toContain("the-reviewer");
+    expect(html).toContain("iago");
     expect(html).toContain("sse-connect");
   });
 
