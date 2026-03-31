@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from "fs";
+import { join, isAbsolute } from "path";
 import type { PRMetadata } from "../types/index.js";
 import { resolveHome } from "./config.js";
 
@@ -33,8 +34,12 @@ Focus on:
 - Missing error handling`;
 }
 
-export function loadPromptFile(path: string): string {
-  const resolved = resolveHome(path);
+export function loadPromptFile(path: string, basePath?: string): string {
+  let resolved = resolveHome(path);
+  // Resolve relative paths against basePath (e.g. worktree)
+  if (basePath && !isAbsolute(resolved)) {
+    resolved = join(basePath, resolved);
+  }
   if (!resolved || !existsSync(resolved)) {
     return "";
   }

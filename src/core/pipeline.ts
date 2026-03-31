@@ -106,15 +106,15 @@ export async function handleNewReview(
     // 6. Generate diff
     const diff = await generateDiff(worktreePath, metadata.base_branch);
 
-    // 7. Assemble prompt
+    // 7. Assemble prompt (resolve relative paths against worktree)
     const systemPrompt = mergedConfig.prompts.system_prompt
-      ? loadPromptFile(mergedConfig.prompts.system_prompt)
+      ? loadPromptFile(mergedConfig.prompts.system_prompt, worktreePath)
       : undefined;
     const instructions = mergedConfig.prompts.instructions
-      ? loadPromptFile(mergedConfig.prompts.instructions)
+      ? loadPromptFile(mergedConfig.prompts.instructions, worktreePath)
       : undefined;
 
-    const techniques = loadTechniques(mergedConfig);
+    const techniques = loadTechniques(mergedConfig, worktreePath);
 
     const prompt = assemblePrompt({
       metadata,
@@ -266,12 +266,12 @@ function getEnabledTools(config: AppConfig): LauncherProfile[] {
     .filter((tool): tool is LauncherProfile => !!tool && tool.enabled);
 }
 
-function loadTechniques(config: AppConfig): string[] {
+function loadTechniques(config: AppConfig, basePath?: string): string[] {
   return config.prompts.default_techniques
     .map((name) => {
       const technique = config.prompts.techniques[name];
       if (!technique) return "";
-      return loadPromptFile(technique.prompt_file);
+      return loadPromptFile(technique.prompt_file, basePath);
     })
     .filter((content) => content.length > 0);
 }
