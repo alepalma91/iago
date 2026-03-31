@@ -285,9 +285,12 @@ command -v alerter >/dev/null 2>&1 && echo "  [ok] alerter (rich notifications)"
 [ -f "$IAGO_BIN/iago-bar" ]       && echo "  [ok] iago-bar (menu bar app)" || echo "  [--] iago-bar — needs Xcode tools: xcode-select --install"
 echo ""
 
-# Run setup if interactive
-if [ -t 0 ]; then
+# Run setup only on first install (no config file yet)
+if [ -t 0 ] && [ ! -f "$IAGO_CONFIG_DIR/config.yaml" ]; then
   echo "Running setup wizard..."
   echo ""
   "$IAGO_BIN/iago" setup || true
+else
+  echo "To get started: iago start"
+  echo "To reconfigure:  iago setup"
 fi
