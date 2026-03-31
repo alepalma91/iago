@@ -11,7 +11,7 @@ permissions:
 jobs:
   build-arm64:
     name: Build (arm64)
-    runs-on: macos-14  # Apple Silicon runner
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +39,8 @@ jobs:
       - name: Create tarball
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          tar -czf dist/iago-${VERSION}-darwin-arm64.tar.gz -C dist iago iago-bar
+          cp install-prompts/system.md install-prompts/instructions.md dist/
+          tar -czf dist/iago-${VERSION}-darwin-arm64.tar.gz -C dist iago iago-bar system.md instructions.md
           shasum -a 256 dist/iago-${VERSION}-darwin-arm64.tar.gz > dist/iago-${VERSION}-darwin-arm64.tar.gz.sha256
 
       - uses: actions/upload-artifact@v4
@@ -49,7 +50,7 @@ jobs:
 
   build-x64:
     name: Build (x86_64)
-    runs-on: macos-13  # Intel runner
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +68,6 @@ jobs:
 
       - name: Build menu bar app
         run: |
-          # x86_64 target for Intel
           mkdir -p extras/menubar/.build
           swiftc -O -o extras/menubar/.build/IagoBar \
             -sdk $(xcrun --show-sdk-path) \
@@ -85,7 +85,8 @@ jobs:
       - name: Create tarball
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          tar -czf dist/iago-${VERSION}-darwin-x86_64.tar.gz -C dist iago iago-bar
+          cp install-prompts/system.md install-prompts/instructions.md dist/
+          tar -czf dist/iago-${VERSION}-darwin-x86_64.tar.gz -C dist iago iago-bar system.md instructions.md
           shasum -a 256 dist/iago-${VERSION}-darwin-x86_64.tar.gz > dist/iago-${VERSION}-darwin-x86_64.tar.gz.sha256
 
       - uses: actions/upload-artifact@v4
@@ -94,17 +95,138 @@ jobs:
           path: dist/*.tar.gz*
 
   release:
-    name: Create Release
+    name: Publish Release
     needs: [build-arm64, build-x64]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: artifacts/*
+      # Publish assets to the PUBLIC homebrew-iago repo (private repo assets 404 for brew)
+      - name: Create release on homebrew-iago
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo alepalma91/homebrew-iago \
+            --title "iago ${VERSION}" \
+            --notes "Automated release for iago v${VERSION}" \
+            artifacts/*.tar.gz
+
+      # Update the formula with new version + SHA
+      - name: Update Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          SHA_ARM64=$(cat artifacts/iago-${VERSION}-darwin-arm64.tar.gz.sha256 | awk '{print $1}')
+          SHA_X64=$(cat artifacts/iago-${VERSION}-darwin-x86_64.tar.gz.sha256 | awk '{print $1}')
+
+          gh repo clone alepalma91/homebrew-iago /tmp/tap
+          cd /tmp/tap
+
+          cat > Formula/iago.rb << RUBY
+          class Iago < Formula
+            desc "AI-powered PR review daemon — monitors GitHub and reviews PRs with Claude Code"
+            homepage "https://github.com/alepalma91/iago"
+            version "${VERSION}"
+            license "MIT"
+
+            depends_on "gh"
+            depends_on :macos
+
+            on_macos do
+              on_arm do
+                url "https://github.com/alepalma91/homebrew-iago/releases/download/v${VERSION}/iago-${VERSION}-darwin-arm64.tar.gz"
+                sha256 "${SHA_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/alepalma91/homebrew-iago/releases/download/v${VERSION}/iago-${VERSION}-darwin-x86_64.tar.gz"
+                sha256 "${SHA_X64}"
+              end
+            end
+
+            def install
+              bin.install "iago"
+              bin.install "iago-bar" if File.exist?("iago-bar")
+              (pkgshare/"prompts").install "system.md"
+              (pkgshare/"prompts").install "instructions.md"
+            end
+
+            def post_install
+              config_dir = etc/"iago"
+              prompts_dir = config_dir/"prompts"
+              prompts_dir.mkpath
+
+              unless (prompts_dir/"system.md").exist?
+                cp pkgshare/"prompts/system.md", prompts_dir/"system.md"
+              end
+              unless (prompts_dir/"instructions.md").exist?
+                cp pkgshare/"prompts/instructions.md", prompts_dir/"instructions.md"
+              end
+
+              unless (config_dir/"config.yaml").exist?
+                (config_dir/"config.yaml").write <<~YAML
+                  # iago configuration
+                  github:
+                    poll_interval: 60s
+                    watched_repos: []
+                    ignored_repos: []
+                  launchers:
+                    max_parallel: 3
+                    default_tools:
+                      - claude
+                  prompts:
+                    system_prompt: #{prompts_dir}/system.md
+                    instructions: #{prompts_dir}/instructions.md
+                  notifications:
+                    native: true
+                  dashboard:
+                    enabled: true
+                    port: 1460
+                YAML
+              end
+
+              user_config = Pathname.new(Dir.home)/".config/iago"
+              unless user_config.exist?
+                user_config.mkpath
+                FileUtils.ln_sf config_dir/"config.yaml", user_config/"config.yaml"
+                FileUtils.ln_sf config_dir/"prompts", user_config/"prompts"
+              end
+            end
+
+            def caveats
+              <<~EOS
+                iago requires Claude Code CLI to review PRs:
+                  https://docs.anthropic.com/en/docs/claude-code
+
+                For rich notifications with action buttons:
+                  brew install alerter
+
+                Config: #{etc}/iago/config.yaml (symlinked to ~/.config/iago/)
+                Data:   ~/.local/share/iago/
+
+                To start: iago start
+                To setup: iago setup
+              EOS
+            end
+
+            test do
+              assert_match "iago", shell_output("#{bin}/iago --help 2>&1", 0)
+            end
+          end
+          RUBY
+
+          # Fix heredoc indentation
+          sed -i 's/^          //' Formula/iago.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/iago.rb
+          git commit -m "Update iago to ${VERSION}"
+          git push
