@@ -8,6 +8,7 @@ import { configCommand } from "./commands/config.js";
 import { dashboardCommand } from "./commands/dashboard.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { setupCommand } from "./commands/setup.js";
+import { attachCommand } from "./commands/attach.js";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -38,6 +39,9 @@ async function main() {
     case "setup":
       await setupCommand(args.slice(1));
       break;
+    case "attach":
+      await attachCommand(args.slice(1));
+      break;
     case "help":
     case "--help":
     case "-h":
@@ -64,6 +68,7 @@ Usage:
   iago dashboard Start the dashboard server
   iago mcp       Start the MCP server (stdio transport)
   iago setup     Interactive first-time setup wizard
+  iago attach    Attach to a live Claude review session
   iago help      Show this help message`);
 }
 

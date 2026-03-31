@@ -3,7 +3,9 @@ import { createDatabase } from "../db/database.js";
 import { createQueries } from "../db/queries.js";
 import { enrichPR } from "../core/poller.js";
 import { ensureReferenceRepo, createWorktree, generateDiff, getOutputPath, removeWorktree, getBareRepoPath } from "../core/sandbox.js";
-import { launchAllTools, writeOutput } from "../core/launcher.js";
+import { launchAllTools, writeOutput, type LaunchOptions } from "../core/launcher.js";
+import { registerProcess, unregisterProcess } from "../core/process-registry.js";
+import { sendReviewCompleteNotification, sendReviewErrorNotification } from "../core/notifier.js";
 import { assemblePrompt, loadPromptFile } from "../core/prompt.js";
 import { join } from "path";
 import { mkdirSync } from "fs";
@@ -78,6 +80,7 @@ export async function reviewCommand(args: string[]): Promise<void> {
       url: metadata.url,
       branch: metadata.branch,
       base_branch: metadata.base_branch,
+      opened_at: metadata.opened_at,
     });
   }
   queries.insertEvent(pr.id, "accepted", "Manual review triggered");
@@ -154,6 +157,9 @@ export async function reviewCommand(args: string[]): Promise<void> {
   queries.updatePRStatus(pr.id, "reviewing");
   queries.insertEvent(pr.id, "reviewing", "Launching review tools");
 
+  const sessionId = crypto.randomUUID();
+  queries.updatePRSessionId(pr.id, sessionId);
+
   const variables: Record<string, string> = {
     prompt,
     diff_file: `${worktreePath}/pr.diff`,
@@ -163,6 +169,7 @@ export async function reviewCommand(args: string[]): Promise<void> {
     repo: metadata.repo,
     branch: metadata.branch,
     base_branch: metadata.base_branch,
+    session_id: sessionId,
   };
 
   const toolStatus: Record<string, string> = {};
@@ -171,11 +178,20 @@ export async function reviewCommand(args: string[]): Promise<void> {
   }
   queries.updatePRToolStatus(pr.id, toolStatus);
 
+  const launchOptions: LaunchOptions = {
+    sessionId,
+    onSpawn({ proc, pid }) {
+      queries.updatePRPid(pr.id, pid);
+      registerProcess(pr.id, { pid, sessionId, proc, startedAt: Date.now() });
+    },
+  };
+
   const results = await launchAllTools(
     enabledTools,
     variables,
     worktreePath,
-    mergedConfig.launchers.max_parallel
+    mergedConfig.launchers.max_parallel,
+    launchOptions
   );
 
   // Save outputs
@@ -203,8 +219,30 @@ export async function reviewCommand(args: string[]): Promise<void> {
   }
 
   queries.updatePRToolStatus(pr.id, toolStatus);
-  queries.updatePRStatus(pr.id, "done");
-  queries.insertEvent(pr.id, "done", "Review complete");
+  unregisterProcess(pr.id);
+  queries.updatePRPid(pr.id, null);
+
+  const allFailed = results.every((r) => r.exitCode !== 0);
+  const prInfo = { repo: metadata.repo, pr_number: metadata.number, title: metadata.title, author: metadata.author, url: metadata.url };
+
+  if (allFailed && results.length > 0) {
+    queries.updatePRStatus(pr.id, "error");
+    queries.insertEvent(pr.id, "error", "All tools failed");
+    console.log(`\n  All tools failed — marked as error.`);
+    sendReviewErrorNotification(prInfo, "All review tools failed").catch(() => {});
+  } else {
+    queries.updatePRStatus(pr.id, "done");
+    queries.insertEvent(pr.id, "done", "Review complete");
+
+    const passed = results.filter((r) => r.exitCode === 0).length;
+    const failed = results.filter((r) => r.exitCode !== 0 && !r.timedOut).length;
+    const timedOut = results.filter((r) => r.timedOut).length;
+    const parts: string[] = [];
+    if (passed > 0) parts.push(`${passed} passed`);
+    if (failed > 0) parts.push(`${failed} failed`);
+    if (timedOut > 0) parts.push(`${timedOut} timed out`);
+    sendReviewCompleteNotification(prInfo, parts.join(", ") || "no tools ran").catch(() => {});
+  }
 
   console.log(`\n  Output saved to: ${outputDir}`);
 

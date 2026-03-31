@@ -33,4 +33,5 @@ export interface PRMetadata {
   deletions: number;
   changed_files: number;
   body: string | null;
+  opened_at: string | null;
 }

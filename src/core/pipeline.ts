@@ -4,7 +4,8 @@ import type { PRMetadata, AppConfig, NotificationAction } from "../types/index.j
 import { sendPRNotification, openInBrowser, sendReviewCompleteNotification, sendReviewErrorNotification } from "./notifier.js";
 import { fetchPRGitHubStatus } from "./poller.js";
 import { ensureReferenceRepo, createWorktree, generateDiff, getOutputPath, removeWorktree, getBareRepoPath, getWorktreePath } from "./sandbox.js";
-import { launchAllTools, writeOutput } from "./launcher.js";
+import { launchAllTools, writeOutput, type LaunchOptions } from "./launcher.js";
+import { registerProcess, unregisterProcess } from "./process-registry.js";
 import { assemblePrompt, loadPromptFile } from "./prompt.js";
 import { getDataDir, loadRepoConfig, mergeConfigs } from "./config.js";
 import type { LauncherProfile } from "../types/index.js";
@@ -39,6 +40,7 @@ export async function handleNewReview(
       url: metadata.url,
       branch: metadata.branch,
       base_branch: metadata.base_branch,
+      opened_at: metadata.opened_at,
     });
 
     queries.insertEvent(pr.id, "detected", `PR #${metadata.number} detected`);
@@ -127,6 +129,9 @@ export async function handleNewReview(
     queries.insertEvent(pr.id, "reviewing", "Launching review tools");
 
     const enabledTools = getEnabledTools(mergedConfig);
+    const sessionId = crypto.randomUUID();
+    queries.updatePRSessionId(pr.id, sessionId);
+
     const variables: Record<string, string> = {
       prompt,
       diff_file: `${worktreePath}/pr.diff`,
@@ -136,6 +141,7 @@ export async function handleNewReview(
       repo: metadata.repo,
       branch: metadata.branch,
       base_branch: metadata.base_branch,
+      session_id: sessionId,
     };
 
     // Update tool_status to "running" for all tools
@@ -145,11 +151,20 @@ export async function handleNewReview(
     }
     queries.updatePRToolStatus(pr.id, toolStatus);
 
+    const launchOptions: LaunchOptions = {
+      sessionId,
+      onSpawn({ proc, pid }) {
+        queries.updatePRPid(pr.id, pid);
+        registerProcess(pr.id, { pid, sessionId, proc, startedAt: Date.now() });
+      },
+    };
+
     const results = await launchAllTools(
       enabledTools,
       variables,
       worktreePath,
-      mergedConfig.launchers.max_parallel
+      mergedConfig.launchers.max_parallel,
+      launchOptions
     );
 
     // 8. Save outputs
@@ -172,40 +187,55 @@ export async function handleNewReview(
     }
 
     queries.updatePRToolStatus(pr.id, toolStatus);
-    queries.updatePRStatus(pr.id, "done");
-    queries.insertEvent(pr.id, "done", "Review complete");
+    unregisterProcess(pr.id);
+    queries.updatePRPid(pr.id, null);
 
-    // Store the head SHA so we can detect when the author pushes new commits
-    try {
-      const ghStatus = await fetchPRGitHubStatus(metadata.repo, metadata.number);
-      if (ghStatus?.headRefOid) {
-        queries.updatePRHeadSha(pr.id, ghStatus.headRefOid);
-      }
-    } catch {}
+    const allFailed = results.every((r) => r.exitCode !== 0);
+    if (allFailed && results.length > 0) {
+      queries.updatePRStatus(pr.id, "error");
+      queries.insertEvent(pr.id, "error", "All tools failed");
 
-    // Compute brief summary from tool results
-    const passed = results.filter((r) => r.exitCode === 0).length;
-    const failed = results.filter((r) => r.exitCode !== 0 && !r.timedOut).length;
-    const timedOut = results.filter((r) => r.timedOut).length;
-    const summaryParts: string[] = [];
-    if (passed > 0) summaryParts.push(`${passed} passed`);
-    if (failed > 0) summaryParts.push(`${failed} failed`);
-    if (timedOut > 0) summaryParts.push(`${timedOut} timed out`);
-    const reviewSummary = summaryParts.length > 0 ? summaryParts.join(", ") : "no tools ran";
+      sendReviewErrorNotification(
+        { repo: metadata.repo, pr_number: metadata.number, title: metadata.title, author: metadata.author, url: metadata.url },
+        "All review tools failed",
+      ).catch(() => {});
+    } else {
+      queries.updatePRStatus(pr.id, "done");
+      queries.insertEvent(pr.id, "done", "Review complete");
 
-    // Notify user that review is done
-    sendReviewCompleteNotification({
-      repo: metadata.repo,
-      pr_number: metadata.number,
-      title: metadata.title,
-      author: metadata.author,
-      url: metadata.url,
-    }, reviewSummary).catch(() => {}); // best-effort
+      // Store the head SHA so we can detect when the author pushes new commits
+      try {
+        const ghStatus = await fetchPRGitHubStatus(metadata.repo, metadata.number);
+        if (ghStatus?.headRefOid) {
+          queries.updatePRHeadSha(pr.id, ghStatus.headRefOid);
+        }
+      } catch {}
+
+      // Compute brief summary from tool results
+      const passed = results.filter((r) => r.exitCode === 0).length;
+      const failed = results.filter((r) => r.exitCode !== 0 && !r.timedOut).length;
+      const timedOut = results.filter((r) => r.timedOut).length;
+      const summaryParts: string[] = [];
+      if (passed > 0) summaryParts.push(`${passed} passed`);
+      if (failed > 0) summaryParts.push(`${failed} failed`);
+      if (timedOut > 0) summaryParts.push(`${timedOut} timed out`);
+      const reviewSummary = summaryParts.length > 0 ? summaryParts.join(", ") : "no tools ran";
+
+      sendReviewCompleteNotification({
+        repo: metadata.repo,
+        pr_number: metadata.number,
+        title: metadata.title,
+        author: metadata.author,
+        url: metadata.url,
+      }, reviewSummary).catch(() => {});
+    }
 
     // Clean up worktree
     const barePath = getBareRepoPath(metadata.repo, dataDir);
     await removeWorktree(worktreePath, barePath);
   } catch (err: any) {
+    unregisterProcess(pr.id);
+    queries.updatePRPid(pr.id, null);
     queries.updatePRStatus(pr.id, "error");
     queries.insertEvent(pr.id, "error", err.message);
 

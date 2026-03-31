@@ -80,14 +80,23 @@ describe("createDatabase", () => {
     db1.close();
     const db2 = createDatabase(TEST_DB);
     const row = db2.query("SELECT version FROM schema_version LIMIT 1").get() as { version: number };
-    expect(row.version).toBe(4);
+    expect(row.version).toBe(5);
     db2.close();
   });
 
-  it("should set schema_version to 3", () => {
+  it("should set schema_version to 5", () => {
     const db = createDatabase(TEST_DB);
     const row = db.query("SELECT version FROM schema_version LIMIT 1").get() as { version: number };
-    expect(row.version).toBe(4);
+    expect(row.version).toBe(5);
+    db.close();
+  });
+
+  it("should have session_id and pid columns on pr_reviews", () => {
+    const db = createDatabase(TEST_DB);
+    const cols = db.query("PRAGMA table_info(pr_reviews)").all() as { name: string }[];
+    const colNames = cols.map((c) => c.name);
+    expect(colNames).toContain("session_id");
+    expect(colNames).toContain("pid");
     db.close();
   });
 

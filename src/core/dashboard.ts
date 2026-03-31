@@ -3,10 +3,25 @@ import type { AppConfig } from "../types/index.js";
 import type { Queries } from "../db/queries.js";
 import { createQueries } from "../db/queries.js";
 import type { PRReview } from "../types/index.js";
+import { killProcess, getProcess } from "./process-registry.js";
 
 export interface DashboardServer {
   server: ReturnType<typeof Bun.serve>;
   stop: () => void;
+}
+
+/** Returns the command array to invoke ourselves (handles compiled binary vs bun run). */
+function getSelfCommand(): string[] {
+  // process.execPath is always the real binary path:
+  //   compiled: /Users/.../bin/iago
+  //   source:   /Users/.../.bun/bin/bun
+  // For source mode, we also need "run <script>" args
+  const scriptArg = process.argv.find(a => a.endsWith(".ts") || a.endsWith(".js"));
+  if (scriptArg) {
+    return [process.execPath, "run", scriptArg];
+  }
+  // Compiled binary
+  return [process.execPath];
 }
 
 // ── Status colors ──────────────────────────────────────────────────────────
@@ -59,6 +74,22 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr + (dateStr.includes("Z") || dateStr.includes("+") ? "" : "Z")).getTime();
+  const diffMs = now - then;
+  if (diffMs < 0) return "just now";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
 function renderToolPills(toolStatus: Record<string, string> | null): string {
   if (!toolStatus) return '<span class="text-muted">\u2014</span>';
   return Object.entries(toolStatus)
@@ -90,7 +121,7 @@ const PAGE_SIZE = 10;
 
 function renderPRRows(prs: PRReview[]): string {
   if (prs.length === 0) {
-    return `<tr><td colspan="7" class="empty-state">
+    return `<tr><td colspan="8" class="empty-state">
       <div class="empty-icon">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-3-3v6m-7 4h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
       </div>
@@ -113,21 +144,26 @@ function renderPRRows(prs: PRReview[]): string {
       <td><span class="status-badge" style="--status-color:${STATUS_COLORS[pr.status] ?? "#71717a"}">${STATUS_LABELS[pr.status] ?? pr.status}</span></td>
       <td class="cell-title">${pr.title ? escapeHtml(pr.title) : '<span class="text-muted">\u2014</span>'}</td>
       <td class="cell-tools">${renderToolPills(pr.tool_status)}</td>
-      <td class="cell-actions">
-        ${RETRYABLE.has(pr.status) ? `<button class="btn btn-primary btn-sm" onclick="launchReview(${pr.id}, this)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          Review
-        </button>` : ""}
-        ${IN_PROGRESS.has(pr.status) ? `<span class="in-progress-indicator">
-          <span class="spinner"></span> In progress
-        </span>` : ""}
+      <td class="cell-age">
+        <span class="age-created" title="Opened: ${pr.opened_at ?? "unknown"}">${pr.opened_at ? formatRelativeTime(pr.opened_at) : "\u2014"}</span>
+        <span class="age-updated text-muted" title="Last activity: ${pr.updated_at}">${formatRelativeTime(pr.updated_at)}</span>
+      </td>
+      <td class="cell-actions"><div class="cell-actions-inner">${IN_PROGRESS.has(pr.status)
+        ? `<button class="btn btn-danger btn-sm" onclick="cancelReview(${pr.id}, this)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg>
+            Cancel
+          </button>`
+        : `<button class="btn btn-primary btn-sm" onclick="launchReview(${pr.id}, this)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            Review
+          </button>`}
         <button class="btn btn-ghost btn-sm" onclick="toggleDetail(${pr.id}, this)" title="Details">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>
         </button>
-      </td>
+      </div></td>
     </tr>
     <tr id="detail-${pr.id}" class="detail-row" style="display:none">
-      <td colspan="7">
+      <td colspan="8">
         <div class="detail-content" id="detail-content-${pr.id}">
           <div class="detail-loading"><span class="spinner"></span> Loading details...</div>
         </div>
@@ -353,6 +389,16 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       background: var(--bg-hover);
       color: var(--text);
     }
+    .btn-danger {
+      background: transparent;
+      color: var(--error);
+      border-color: color-mix(in srgb, var(--error) 40%, transparent);
+    }
+    .btn-danger:hover {
+      background: color-mix(in srgb, var(--error) 12%, transparent);
+      border-color: var(--error);
+    }
+    .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn-outline {
       background: transparent;
       color: var(--text-secondary);
@@ -372,7 +418,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       border-radius: var(--radius);
       overflow: hidden;
     }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     thead th {
       text-align: left;
       padding: 10px 16px;
@@ -409,10 +455,21 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       white-space: nowrap;
     }
     .cell-tools { min-width: 100px; }
-    .cell-actions {
-      text-align: right;
+    .cell-age {
+      font-size: 12px;
       white-space: nowrap;
-      min-width: 140px;
+    }
+    .age-created { display: block; }
+    .age-updated { display: block; font-size: 11px; }
+    .cell-actions {
+      white-space: nowrap;
+      padding-right: 12px !important;
+    }
+    .cell-actions-inner {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      justify-content: flex-end;
     }
 
     /* ── Status badge ── */
@@ -422,6 +479,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       gap: 5px;
       padding: 3px 10px;
       border-radius: 20px;
+      white-space: nowrap;
       font-size: 11px;
       font-weight: 600;
       letter-spacing: 0.02em;
@@ -599,6 +657,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       color: var(--pill-color);
       background: color-mix(in srgb, var(--pill-color) 10%, transparent);
       margin-right: 4px;
+      white-space: nowrap;
     }
 
     /* ── Spinner ── */
@@ -628,6 +687,12 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       padding: 16px 24px;
       background: var(--bg);
     }
+    .detail-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .detail-actions:empty { display: none; }
     .detail-loading {
       display: flex;
       align-items: center;
@@ -1030,7 +1095,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     @media (max-width: 768px) {
       .main { padding: 16px; }
       .nav-inner { padding: 0 16px; }
-      .cell-tools, .cell-title { display: none; }
+      .cell-tools, .cell-title, .cell-age { display: none; }
     }
   </style>
 </head>
@@ -1127,13 +1192,14 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
         <table>
           <thead>
             <tr>
-              <th>Repository</th>
-              <th>PR</th>
-              <th>Author</th>
-              <th>Status</th>
+              <th style="width:11%">Repository</th>
+              <th style="width:5%">PR</th>
+              <th style="width:8%">Author</th>
+              <th style="width:9%">Status</th>
               <th>Title</th>
-              <th>Tools</th>
-              <th style="text-align:right">Actions</th>
+              <th style="width:11%">Tools</th>
+              <th style="width:7%">Age</th>
+              <th style="width:20%;text-align:right">Actions</th>
             </tr>
           </thead>
           <tbody id="pr-table-body">
@@ -1365,6 +1431,9 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       if (statuses.length > 0 && statuses.length < allStatuses.length) {
         params.set('status', statuses.join(','));
       }
+      if (currentSection === 'to-review') {
+        params.set('sort', 'opened_at');
+      }
       var ghStates = getSelected('ms-gh-panel');
       if (ghStates.length > 0 && ghStates.length < allGhStates.length) {
         params.set('github_state', ghStates.join(','));
@@ -1548,6 +1617,100 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       }
     }
 
+    async function dismissReview(prId, btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:1.5px"></span>';
+      try {
+        var res = await fetch('/api/reviews/' + prId + '/dismiss', { method: 'POST' });
+        if (!res.ok) {
+          var data = await res.json();
+          btn.innerHTML = data.error || 'Error';
+          setTimeout(function() { btn.innerHTML = 'Dismiss'; btn.disabled = false; }, 2000);
+          return;
+        }
+        refreshData();
+      } catch(e) {
+        btn.innerHTML = 'Dismiss';
+        btn.disabled = false;
+      }
+    }
+
+    async function cancelReview(prId, btn) {
+      if (!confirm('Cancel this review? The running process will be killed.')) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:1.5px"></span> Cancelling...';
+      try {
+        var res = await fetch('/api/reviews/' + prId + '/cancel', { method: 'POST' });
+        if (!res.ok) {
+          var data = await res.json();
+          btn.innerHTML = data.error || 'Error';
+          setTimeout(function() { btn.innerHTML = 'Cancel'; btn.disabled = false; }, 2000);
+          return;
+        }
+        refreshData();
+      } catch(e) {
+        btn.innerHTML = 'Cancel';
+        btn.disabled = false;
+      }
+    }
+
+    function copyAttach(prId, sessionId, btn) {
+      var cmd = 'iago attach ' + prId;
+      navigator.clipboard.writeText(cmd).then(function() {
+        var orig = btn.innerHTML;
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Copied';
+        setTimeout(function() { btn.innerHTML = orig; }, 1500);
+      });
+    }
+
+    // ── Progress polling for in-progress rows ──
+    var progressIntervals = {};
+    function startProgressPolling() {
+      // Clear old intervals
+      Object.values(progressIntervals).forEach(function(id) { clearInterval(id); });
+      progressIntervals = {};
+      // Find in-progress rows and poll
+      document.querySelectorAll('.in-progress-indicator').forEach(function(el) {
+        var match = el.id && el.id.match(/^progress-(\\d+)$/);
+        if (!match) return;
+        var prId = match[1];
+        function poll() {
+          fetch('/api/reviews/' + prId + '/progress')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              var textEl = el.querySelector('.progress-text');
+              if (!textEl) return;
+              if (d.lastEvent && d.lastEvent.message) {
+                var elapsed = d.elapsed ? ' (' + formatElapsed(d.elapsed) + ')' : '';
+                textEl.textContent = d.lastEvent.message + elapsed;
+              }
+              if (!['accepted','cloning','reviewing'].includes(d.status)) {
+                clearInterval(progressIntervals[prId]);
+                delete progressIntervals[prId];
+                refreshData();
+              }
+            }).catch(function(){});
+        }
+        poll();
+        progressIntervals[prId] = setInterval(poll, 5000);
+      });
+    }
+
+    function formatElapsed(sec) {
+      if (sec < 60) return sec + 's';
+      var m = Math.floor(sec / 60);
+      var s = sec % 60;
+      return m + 'm ' + s + 's';
+    }
+
+    // Start polling after page load and after each page fetch
+    var origFetchPage = fetchPage;
+    fetchPage = async function(page) {
+      await origFetchPage(page);
+      startProgressPolling();
+    };
+    startProgressPolling();
+
     async function toggleDetail(prId, btn) {
       var row = document.getElementById('detail-' + prId);
       if (!row) return;
@@ -1556,13 +1719,26 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
         if (btn) btn.querySelector('svg').style.transform = 'rotate(180deg)';
         var content = document.getElementById('detail-content-' + prId);
         try {
-          var [evRes, outRes] = await Promise.all([
+          var [evRes, outRes, prRes] = await Promise.all([
             fetch('/api/reviews/' + prId + '/events'),
-            fetch('/api/reviews/' + prId + '/outputs')
+            fetch('/api/reviews/' + prId + '/outputs'),
+            fetch('/api/reviews/' + prId + '/progress')
           ]);
           var events = await evRes.json();
           var outputs = await outRes.json();
-          var html = '<div class="detail-section-title">Events</div>';
+          var prInfo = await prRes.json();
+
+          // Action bar
+          var html = '<div class="detail-actions">';
+          if (prInfo.status === 'notified' || prInfo.status === 'detected') {
+            html += '<button class="btn btn-ghost btn-sm" onclick="dismissReview(' + prId + ', this)">Dismiss</button>';
+          }
+          if (prInfo.session_id && (prInfo.status === 'accepted' || prInfo.status === 'cloning' || prInfo.status === 'reviewing')) {
+            html += '<button class="btn btn-ghost btn-sm" onclick="copyAttach(' + prId + ', \\'' + prInfo.session_id + '\\', this)">Copy attach command</button>';
+          }
+          html += '</div>';
+
+          html += '<div class="detail-section-title">Events</div>';
           if (events.length === 0) html += '<div class="text-muted text-sm">No events</div>';
           else events.forEach(function(e) {
             html += '<div class="event-item"><span class="event-time">' + e.created_at + '</span><span class="event-type">' + e.event_type + '</span>' + (e.message ? '<span class="event-msg"> \\u2014 ' + e.message + '</span>' : '') + '</div>';
@@ -1874,6 +2050,17 @@ RULES:
           if (ghFilters.length > 0) {
             filtered = filtered.filter((pr) => ghFilters.includes(pr.github_state));
           }
+
+          // Sort
+          const sort = url.searchParams.get("sort") || "";
+          if (sort === "opened_at") {
+            filtered.sort((a, b) => {
+              const aDate = a.opened_at ? new Date(a.opened_at).getTime() : 0;
+              const bDate = b.opened_at ? new Date(b.opened_at).getTime() : 0;
+              return bDate - aDate;
+            });
+          }
+
           const totalPages = Math.max(1, Math.ceil(filtered.length / size));
           const offset = (page - 1) * size;
           const pagePRs = filtered.slice(offset, offset + size);
@@ -1901,12 +2088,64 @@ RULES:
           if (!pr.url) return Response.json({ error: "PR has no URL" }, { status: 400 });
           queries.updatePRStatus(pr.id, "accepted");
           queries.insertEvent(pr.id, "accepted", "Review launched from dashboard");
-          Bun.spawn(["bun", "run", "src/index.ts", "review", pr.url, "--force"], {
+          // Use the same entry point that started us — works for both compiled binary and bun run
+          const selfCmd = getSelfCommand();
+          Bun.spawn([...selfCmd, "review", pr.url, "--force"], {
             stdout: "ignore",
             stderr: "ignore",
-            cwd: import.meta.dir + "/../..",
           });
           return Response.json({ ok: true, status: "launched" });
+        }
+
+        // POST /api/reviews/:id/cancel — kill in-progress review
+        const cancelMatch = path.match(/^\/api\/reviews\/(\d+)\/cancel$/);
+        if (cancelMatch && req.method === "POST") {
+          const id = parseInt(cancelMatch[1]!, 10);
+          const pr = queries.getPR(id);
+          if (!pr) return Response.json({ error: "PR not found" }, { status: 404 });
+          if (!["accepted", "cloning", "reviewing"].includes(pr.status)) {
+            return Response.json({ error: "PR is not in progress" }, { status: 400 });
+          }
+          const killed = killProcess(id);
+          queries.updatePRStatus(id, "error");
+          queries.updatePRPid(id, null);
+          queries.insertEvent(id, "cancelled", killed ? "Review cancelled from dashboard (process killed)" : "Review cancelled from dashboard");
+          return Response.json({ ok: true, killed });
+        }
+
+        // POST /api/reviews/:id/dismiss — dismiss notified/detected review
+        const dismissMatch = path.match(/^\/api\/reviews\/(\d+)\/dismiss$/);
+        if (dismissMatch && req.method === "POST") {
+          const id = parseInt(dismissMatch[1]!, 10);
+          const pr = queries.getPR(id);
+          if (!pr) return Response.json({ error: "PR not found" }, { status: 404 });
+          if (!["notified", "detected"].includes(pr.status)) {
+            return Response.json({ error: "PR cannot be dismissed from status: " + pr.status }, { status: 400 });
+          }
+          queries.updatePRStatus(id, "dismissed");
+          queries.insertEvent(id, "dismissed", "Dismissed from dashboard");
+          return Response.json({ ok: true });
+        }
+
+        // GET /api/reviews/:id/progress — live progress info
+        const progressMatch = path.match(/^\/api\/reviews\/(\d+)\/progress$/);
+        if (progressMatch && req.method === "GET") {
+          const id = parseInt(progressMatch[1]!, 10);
+          const pr = queries.getPR(id);
+          if (!pr) return Response.json({ error: "PR not found" }, { status: 404 });
+          const events = queries.getEvents(id);
+          const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+          const processEntry = getProcess(id);
+          const isAlive = !!processEntry;
+          const elapsed = processEntry ? Math.round((Date.now() - processEntry.startedAt) / 1000) : null;
+          return Response.json({
+            status: pr.status,
+            session_id: pr.session_id,
+            pid: pr.pid,
+            isAlive,
+            elapsed,
+            lastEvent: lastEvent ? { type: lastEvent.event_type, message: lastEvent.message, at: lastEvent.created_at } : null,
+          });
         }
 
         // GET /api/stats

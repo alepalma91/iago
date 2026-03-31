@@ -8,6 +8,18 @@ export interface LaunchResult {
   exitCode: number;
   durationMs: number;
   timedOut: boolean;
+  pid: number | null;
+  sessionId: string | null;
+}
+
+export interface OnSpawnInfo {
+  proc: ReturnType<typeof Bun.spawn>;
+  pid: number;
+}
+
+export interface LaunchOptions {
+  onSpawn?: (info: OnSpawnInfo) => void;
+  sessionId?: string;
 }
 
 export function interpolateArgs(args: string[], variables: Record<string, string>): string[] {
@@ -40,7 +52,8 @@ export function parseTimeout(timeout: string): number {
 export async function launchTool(
   profile: LauncherProfile,
   variables: Record<string, string>,
-  cwd: string
+  cwd: string,
+  options?: LaunchOptions
 ): Promise<LaunchResult> {
   const args = interpolateArgs(profile.args, variables);
   const timeoutMs = parseTimeout(profile.timeout);
@@ -66,6 +79,11 @@ export async function launchTool(
       env,
     });
 
+    const pid = proc.pid;
+    if (options?.onSpawn && pid) {
+      options.onSpawn({ proc, pid });
+    }
+
     // Race between process completion and timeout
     const outputPromise = new Response(proc.stdout).text();
     const exitPromise = proc.exited;
@@ -88,6 +106,8 @@ export async function launchTool(
         exitCode: -1,
         durationMs,
         timedOut: true,
+        pid: pid ?? null,
+        sessionId: options?.sessionId ?? null,
       };
     }
 
@@ -101,6 +121,8 @@ export async function launchTool(
       exitCode,
       durationMs,
       timedOut: false,
+      pid: pid ?? null,
+      sessionId: options?.sessionId ?? null,
     };
   } catch (err: any) {
     const durationMs = Math.round(performance.now() - start);
@@ -111,6 +133,8 @@ export async function launchTool(
       exitCode: -1,
       durationMs,
       timedOut: false,
+      pid: null,
+      sessionId: options?.sessionId ?? null,
     };
   } finally {
     clearTimeout(timer);
@@ -121,7 +145,8 @@ export async function launchAllTools(
   profiles: LauncherProfile[],
   variables: Record<string, string>,
   cwd: string,
-  maxParallel: number = 3
+  maxParallel: number = 3,
+  options?: LaunchOptions
 ): Promise<LaunchResult[]> {
   const results: LaunchResult[] = [];
 
@@ -129,7 +154,7 @@ export async function launchAllTools(
   for (let i = 0; i < profiles.length; i += maxParallel) {
     const batch = profiles.slice(i, i + maxParallel);
     const batchResults = await Promise.allSettled(
-      batch.map((profile) => launchTool(profile, variables, cwd))
+      batch.map((profile) => launchTool(profile, variables, cwd, options))
     );
 
     for (const result of batchResults) {
@@ -142,6 +167,8 @@ export async function launchAllTools(
           exitCode: -1,
           durationMs: 0,
           timedOut: false,
+          pid: null,
+          sessionId: options?.sessionId ?? null,
         });
       }
     }

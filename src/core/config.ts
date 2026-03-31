@@ -63,7 +63,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       claude: {
         display_name: "Claude Code",
         command: "claude",
-        args: ["--dangerously-skip-permissions", "-p", "{{prompt}}", "--output-format", "text"],
+        args: ["--dangerously-skip-permissions", "-p", "{{prompt}}", "--output-format", "text", "--session-id", "{{session_id}}"],
         stdin_mode: "none",
         output_mode: "stdout",
         timeout: "5m",

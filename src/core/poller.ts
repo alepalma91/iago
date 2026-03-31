@@ -133,6 +133,7 @@ export async function enrichPR(apiUrl: string): Promise<PRMetadata | null> {
         deletions
         changedFiles
         body
+        createdAt
       }
     }
   }`;
@@ -185,6 +186,7 @@ export function parseGraphQLResponse(raw: string, repo: string): PRMetadata | nu
     deletions: pr.deletions ?? 0,
     changed_files: pr.changedFiles ?? 0,
     body: pr.body ?? null,
+    opened_at: pr.createdAt ?? null,
   };
 }
 
@@ -246,6 +248,7 @@ export async function fetchPendingReviews(_sinceHours: number = 8): Promise<PRMe
         deletions: pr.deletions ?? 0,
         changed_files: pr.changedFiles ?? 0,
         body: pr.body ?? null,
+        opened_at: pr.createdAt ?? null,
       }));
   } catch {
     return [];
@@ -290,6 +293,7 @@ export interface PRGitHubStatus {
   reviewedByMe: boolean;
   myReviewState: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING" | null;
   headRefOid: string;
+  createdAt: string | null;
 }
 
 /**
@@ -310,6 +314,7 @@ export async function fetchPRGitHubStatus(
         isDraft
         reviewDecision
         headRefOid
+        createdAt
         reviewRequests(first: 20) {
           nodes {
             requestedReviewer {
@@ -370,6 +375,7 @@ export async function fetchPRGitHubStatus(
       reviewedByMe,
       myReviewState,
       headRefOid: pr.headRefOid ?? "",
+      createdAt: pr.createdAt ?? null,
     };
   } catch {
     return null;

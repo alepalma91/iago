@@ -10,12 +10,16 @@ export interface Queries {
     url: string;
     branch?: string | null;
     base_branch?: string;
+    opened_at?: string | null;
   }): PRReview;
 
   updatePRStatus(id: number, status: PRStatus): void;
   updatePRToolStatus(id: number, toolStatus: Record<string, string>): void;
   updatePRGitHubState(id: number, state: GitHubState): void;
   updatePRHeadSha(id: number, sha: string): void;
+  updatePROpenedAt(id: number, openedAt: string): void;
+  updatePRSessionId(id: number, sessionId: string): void;
+  updatePRPid(id: number, pid: number | null): void;
   getPR(id: number): PRReview | null;
   getPRByRepoAndNumber(repo: string, prNumber: number): PRReview | null;
   getAllPRs(): PRReview[];
@@ -70,8 +74,8 @@ export interface Queries {
 export function createQueries(db: Database): Queries {
   const stmts = {
     insertPR: db.prepare(`
-      INSERT INTO pr_reviews (pr_number, repo, title, author, url, branch, base_branch)
-      VALUES ($pr_number, $repo, $title, $author, $url, $branch, $base_branch)
+      INSERT INTO pr_reviews (pr_number, repo, title, author, url, branch, base_branch, opened_at)
+      VALUES ($pr_number, $repo, $title, $author, $url, $branch, $base_branch, $opened_at)
     `),
     updateStatus: db.prepare(`
       UPDATE pr_reviews SET status = $status, updated_at = datetime('now') WHERE id = $id
@@ -84,6 +88,15 @@ export function createQueries(db: Database): Queries {
     `),
     updateHeadSha: db.prepare(`
       UPDATE pr_reviews SET head_sha = $head_sha, updated_at = datetime('now') WHERE id = $id
+    `),
+    updateOpenedAt: db.prepare(`
+      UPDATE pr_reviews SET opened_at = $opened_at WHERE id = $id
+    `),
+    updateSessionId: db.prepare(`
+      UPDATE pr_reviews SET session_id = $session_id, updated_at = datetime('now') WHERE id = $id
+    `),
+    updatePid: db.prepare(`
+      UPDATE pr_reviews SET pid = $pid, updated_at = datetime('now') WHERE id = $id
     `),
     getPR: db.prepare("SELECT * FROM pr_reviews WHERE id = $id"),
     getPRByRepoAndNumber: db.prepare(
@@ -227,6 +240,7 @@ export function createQueries(db: Database): Queries {
         $url: pr.url,
         $branch: pr.branch ?? null,
         $base_branch: pr.base_branch ?? "main",
+        $opened_at: pr.opened_at ?? null,
       });
       const id = db.query("SELECT last_insert_rowid() as id").get() as { id: number };
       return this.getPR(id.id)!;
@@ -249,6 +263,18 @@ export function createQueries(db: Database): Queries {
 
     updatePRHeadSha(id, sha) {
       stmts.updateHeadSha.run({ $id: id, $head_sha: sha });
+    },
+
+    updatePROpenedAt(id, openedAt) {
+      stmts.updateOpenedAt.run({ $id: id, $opened_at: openedAt });
+    },
+
+    updatePRSessionId(id, sessionId) {
+      stmts.updateSessionId.run({ $id: id, $session_id: sessionId });
+    },
+
+    updatePRPid(id, pid) {
+      stmts.updatePid.run({ $id: id, $pid: pid });
     },
 
     getPR(id) {

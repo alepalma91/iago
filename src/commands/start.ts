@@ -1,4 +1,5 @@
 import { loadConfig, getDataDir, getConfigDir, shouldAutoReview } from "../core/config.js";
+import { getAllProcesses } from "../core/process-registry.js";
 import { createDatabase } from "../db/database.js";
 import { createQueries } from "../db/queries.js";
 import { pollNotifications, enrichPR, fetchPendingReviews, createInitialPollState, checkGhAuth, fetchPRGitHubStatus, getCurrentGithubUser } from "../core/poller.js";
@@ -79,6 +80,7 @@ export async function startCommand(_args: string[]): Promise<void> {
     for (const pr of stuckReviews) {
       console.log(`  [reset] ${pr.repo}#${pr.pr_number}: ${pr.status} -> error`);
       queries.updatePRStatus(pr.id, "error");
+      queries.updatePRPid(pr.id, null);
       queries.insertEvent(pr.id, "error", `Reset: review stuck in "${pr.status}" from previous session`);
     }
     console.log("");
@@ -96,6 +98,11 @@ export async function startCommand(_args: string[]): Promise<void> {
       queries.updatePRGitHubState(pr.id, newState);
       if (newState !== pr.github_state) {
         console.log(`  [sync] ${pr.repo}#${pr.pr_number}: ${pr.github_state} → ${newState}`);
+      }
+
+      // Backfill opened_at if missing
+      if (!pr.opened_at && ghStatus.createdAt) {
+        queries.updatePROpenedAt(pr.id, ghStatus.createdAt);
       }
 
       // Promote "done" PRs to "changes_requested" if we requested changes on GitHub
@@ -148,6 +155,7 @@ export async function startCommand(_args: string[]): Promise<void> {
             url: pr.url,
             branch: pr.branch,
             base_branch: pr.base_branch,
+            opened_at: pr.opened_at,
           });
           queries.insertEvent(row.id, "detected", "Found during startup catch-up");
 
@@ -234,6 +242,15 @@ export async function startCommand(_args: string[]): Promise<void> {
   // Graceful shutdown
   const shutdown = () => {
     console.log("\niago: shutting down...");
+    // Kill any in-progress review processes
+    const active = getAllProcesses();
+    if (active.size > 0) {
+      console.log(`  Killing ${active.size} active review process(es)...`);
+      for (const [prId, entry] of active) {
+        try { entry.proc.kill(); } catch {}
+        queries.updatePRPid(prId, null);
+      }
+    }
     if (menubarProc) {
       menubarProc.kill();
     }
@@ -285,6 +302,7 @@ export async function startCommand(_args: string[]): Promise<void> {
             url: pr.url,
             branch: pr.branch,
             base_branch: pr.base_branch,
+            opened_at: pr.opened_at,
           });
           queries.insertEvent(row.id, "detected", "Found during poll");
 

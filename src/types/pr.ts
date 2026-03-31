@@ -25,6 +25,8 @@ export interface PRReview {
   github_state: GitHubState;
   tool_status: Record<string, string> | null;
   head_sha: string | null;
+  session_id: string | null;
+  pid: number | null;
   worktree_path: string | null;
   opened_at: string | null;
   created_at: string;
