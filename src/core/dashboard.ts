@@ -225,8 +225,8 @@ function computeStats(queries: Queries) {
 
 function renderHTML(prs: PRReview[], queries: Queries): string {
   const activePRs = prs.filter((pr) => !["done", "error", "dismissed"].includes(pr.status));
-  const toReviewPRs = prs.filter((pr) => ["detected", "notified", "updated"].includes(pr.status));
-  const inProgressPRs = prs.filter((pr) => ["accepted", "cloning", "reviewing", "changes_requested"].includes(pr.status));
+  const toReviewPRs = prs.filter((pr) => ["detected", "notified", "updated"].includes(pr.status) && (pr.github_state ?? "open") === "open");
+  const inProgressPRs = prs.filter((pr) => ["accepted", "cloning", "reviewing", "changes_requested"].includes(pr.status) && (pr.github_state ?? "open") === "open");
   const recentPRs = prs.filter((pr) => ["done", "error"].includes(pr.status));
   // Default view: show non-dismissed PRs
   const defaultFiltered = prs.filter((pr) => pr.status !== "dismissed");
@@ -1669,10 +1669,13 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     });
 
     // ── Section tabs ──
+    // Sections that should only show open PRs
+    var sectionGhFilter = { 'in-progress': ['open'], 'to-review': ['open'] };
+
     function switchSection(section) {
       currentSection = section;
       var statuses = sectionMap[section] || sectionMap['all'];
-      // Update checkboxes to match section
+      // Update status checkboxes
       var panel = document.getElementById('ms-status-panel');
       var checkboxes = panel.querySelectorAll('input[type="checkbox"]');
       checkboxes.forEach(function(cb) {
@@ -1680,6 +1683,21 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
         cb.checked = statuses.indexOf(val) !== -1;
       });
       updateLabel('ms-status', allStatuses, statusLabels);
+      // Update GitHub state checkboxes for sections that filter by gh state
+      var ghFilter = sectionGhFilter[section];
+      if (ghFilter) {
+        var ghPanel = document.getElementById('ms-gh-panel');
+        ghPanel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+          var val = cb.closest('.multi-select-item').getAttribute('data-value');
+          cb.checked = ghFilter.indexOf(val) !== -1;
+        });
+        updateLabel('ms-gh', allGhStates, ghLabels);
+      } else {
+        // Reset to all gh states
+        var ghPanel = document.getElementById('ms-gh-panel');
+        ghPanel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { cb.checked = true; });
+        updateLabel('ms-gh', allGhStates, ghLabels);
+      }
       // Update active tab
       document.querySelectorAll('.section-tab').forEach(function(t) { t.classList.remove('active'); });
       document.querySelector('.section-tab[data-section="' + section + '"]').classList.add('active');
@@ -1695,7 +1713,10 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
         'recent': sectionMap['recent']
       };
       Object.keys(sections).forEach(function(key) {
-        fetch('/api/reviews/page?status=' + sections[key].join(',') + '&size=1&page=1')
+        var qs = 'status=' + sections[key].join(',') + '&size=1&page=1';
+        // Filter by open gh state for sections that need it
+        if (sectionGhFilter[key]) qs += '&github_state=' + sectionGhFilter[key].join(',');
+        fetch('/api/reviews/page?' + qs)
           .then(function(r) { return r.json(); })
           .then(function(d) {
             var el = document.getElementById('count-' + key);
