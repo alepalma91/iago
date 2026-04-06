@@ -1252,24 +1252,72 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 12px;
-      border: 1px solid var(--border);
+      padding: 6px 10px;
       border-radius: var(--radius-sm);
-      margin-bottom: 6px;
       cursor: pointer;
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-secondary);
       transition: background 0.15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .prompt-file-item:hover {
       background: var(--bg-hover);
       color: var(--text);
     }
     .prompt-file-item.active {
-      border-color: var(--accent);
-      color: var(--text);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      color: var(--accent);
+      border-left: 2px solid var(--accent);
     }
     .prompt-file-item svg { opacity: 0.5; flex-shrink: 0; }
+    .prompt-file-item.indented { padding-left: 24px; }
+    .folder-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      user-select: none;
+      border-radius: var(--radius-sm);
+    }
+    .folder-header:hover { background: var(--bg-hover); }
+    .folder-header .folder-chevron {
+      transition: transform 0.2s;
+      opacity: 0.5;
+      width: 10px;
+      height: 10px;
+      flex-shrink: 0;
+    }
+    .folder-header.collapsed .folder-chevron { transform: rotate(-90deg); }
+    .folder-files { overflow: hidden; }
+    .folder-files.collapsed { display: none; }
+    .prompts-layout {
+      display: flex;
+      gap: 16px;
+      min-height: 350px;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+      margin-top: 16px;
+    }
+    .prompts-tree {
+      width: 240px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      overflow-y: auto;
+      max-height: 500px;
+    }
+    .prompts-editor {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
     .technique-row {
       display: grid;
       grid-template-columns: 1fr 2fr 2fr auto;
@@ -1484,9 +1532,9 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
           <p class="text-sm" style="margin-top:4px">Powered by your Claude session</p>
           <div class="chat-suggestions">
             <button class="chat-suggestion" onclick="askSuggestion(this)">Summarize recent reviews</button>
-            <button class="chat-suggestion" onclick="askSuggestion(this)">Common findings?</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">Show current config</button>
+            <button class="chat-suggestion" onclick="askSuggestion(this)">Improve the system prompt</button>
             <button class="chat-suggestion" onclick="askSuggestion(this)">Show error patterns</button>
-            <button class="chat-suggestion" onclick="askSuggestion(this)">Repos needing attention?</button>
           </div>
         </div>
       </div>
@@ -2057,6 +2105,20 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
         if (data.ok) {
           addChatMsg('assistant', data.response);
           chatHistory.push({ role: 'assistant', content: data.response });
+          // Handle actions
+          if (data.actions && data.actions.length > 0) {
+            data.actions.forEach(function(a) {
+              if (!a.result.startsWith('Error')) {
+                showToast(a.result);
+              }
+            });
+            // Reload settings if on settings tab
+            settingsLoaded = false;
+            var settingsTab = document.getElementById('tab-settings');
+            if (settingsTab && settingsTab.classList.contains('active')) {
+              loadSettings();
+            }
+          }
         } else {
           addChatMsg('system', 'Error: ' + (data.error || 'Unknown error'));
         }
@@ -2082,8 +2144,8 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
         + '<p>Ask questions about your code reviews, get summaries, or analyze patterns.</p>'
         + '<div class="chat-suggestions">'
         + '<button class="chat-suggestion" onclick="askSuggestion(this)">Summarize recent reviews</button>'
-        + '<button class="chat-suggestion" onclick="askSuggestion(this)">What are the common findings?</button>'
-        + '<button class="chat-suggestion" onclick="askSuggestion(this)">Show error patterns</button>'
+        + '<button class="chat-suggestion" onclick="askSuggestion(this)">Show current config</button>'
+        + '<button class="chat-suggestion" onclick="askSuggestion(this)">Improve the system prompt</button>'
         + '</div></div>';
     }
 
@@ -2168,17 +2230,19 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       html += '<div class="settings-actions"><button class="btn btn-primary btn-sm" onclick="saveGlobalSettings()">Save Global Settings</button></div>';
       html += '</div></div>';
 
-      // Section 2: Prompts
+      // Section 2: Prompts (merged with file browser)
       html += '<div class="settings-section">';
       html += '<div class="settings-section-header" onclick="toggleSettingsSection(this)"><svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg> Prompts</div>';
       html += '<div class="settings-section-body">';
+
+      // Config fields
+      html += '<div class="settings-grid">';
       html += '<div class="settings-field"><label>System Prompt File</label><input type="text" id="s-system-prompt-path" value="' + esc(c.prompts.system_prompt || '') + '"><div class="hint">Path to system prompt .md file</div></div>';
-      html += '<div class="settings-field full-width"><label>System Prompt Content</label><textarea class="prompt-editor" id="s-system-prompt-content">' + esc(d.promptContents.system_prompt || '') + '</textarea></div>';
       html += '<div class="settings-field"><label>Instructions File</label><input type="text" id="s-instructions-path" value="' + esc(c.prompts.instructions || '') + '"><div class="hint">Path to instructions .md file</div></div>';
-      html += '<div class="settings-field full-width"><label>Instructions Content</label><textarea class="prompt-editor" id="s-instructions-content">' + esc(d.promptContents.instructions || '') + '</textarea></div>';
+      html += '</div>';
 
       // Techniques
-      html += '<div class="settings-field full-width"><label>Techniques</label>';
+      html += '<div class="settings-field full-width" style="margin-top:12px"><label>Techniques</label>';
       var techKeys = Object.keys(c.prompts.techniques || {});
       html += '<div id="techniques-list">';
       techKeys.forEach(function(key) {
@@ -2189,7 +2253,23 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       html += '<button class="btn btn-ghost btn-sm" onclick="addTechnique()" style="margin-top:8px">+ Add Technique</button>';
       html += '</div>';
 
-      html += '<div class="settings-actions"><button class="btn btn-primary btn-sm" onclick="savePrompts()">Save Prompts</button></div>';
+      html += '<div class="settings-actions" style="border-top:none;margin-top:8px;padding-top:0"><button class="btn btn-primary btn-sm" onclick="savePromptConfig()">Save Config</button></div>';
+
+      // Two-panel layout: file tree + editor
+      html += '<div class="prompts-layout">';
+      // Left: file tree
+      html += '<div class="prompts-tree">';
+      html += '<div id="prompt-file-tree"></div>';
+      html += '<div style="margin-top:10px;display:flex;gap:6px"><input type="text" id="new-prompt-file" placeholder="path/file.md" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:12px;padding:6px 8px"><button class="btn btn-ghost btn-sm" onclick="createPromptFile()">New</button></div>';
+      html += '</div>';
+      // Right: editor
+      html += '<div class="prompts-editor">';
+      html += '<div id="prompt-editor-label" style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">Select a file to edit</div>';
+      html += '<textarea class="prompt-editor" id="prompt-file-editor" style="flex:1" disabled placeholder="Select a file from the left panel..."></textarea>';
+      html += '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" id="save-prompt-btn" onclick="savePromptFile()" disabled>Save File</button><button class="btn btn-danger btn-sm" id="delete-prompt-btn" onclick="deletePromptFile()" disabled>Delete File</button></div>';
+      html += '</div>';
+      html += '</div>'; // end prompts-layout
+
       html += '</div></div>';
 
       // Section 3: Repository Overrides
@@ -2207,30 +2287,8 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       html += '<div class="settings-actions"><button class="btn btn-primary btn-sm" onclick="saveRepos()">Save Repository Overrides</button></div>';
       html += '</div></div>';
 
-      // Section 4: Prompt Files Browser
-      html += '<div class="settings-section">';
-      html += '<div class="settings-section-header" onclick="toggleSettingsSection(this)"><svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg> Prompt Files Browser</div>';
-      html += '<div class="settings-section-body">';
-      html += '<div style="display:flex;gap:16px;min-height:300px">';
-      // File list
-      html += '<div style="width:240px;flex-shrink:0">';
-      html += '<div id="prompt-file-list">';
-      (d.promptFiles || []).forEach(function(f) {
-        html += '<div class="prompt-file-item" onclick="loadPromptFile(\\'' + esc(f) + '\\', this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>' + esc(f) + '</div>';
-      });
-      html += '</div>';
-      html += '<div style="margin-top:10px;display:flex;gap:6px"><input type="text" id="new-prompt-file" placeholder="path/file.md" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:12px;padding:6px 8px"><button class="btn btn-ghost btn-sm" onclick="createPromptFile()">New</button></div>';
-      html += '</div>';
-      // Editor
-      html += '<div style="flex:1;display:flex;flex-direction:column">';
-      html += '<div id="prompt-editor-label" style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">Select a file to edit</div>';
-      html += '<textarea class="prompt-editor" id="prompt-file-editor" style="flex:1" disabled placeholder="Select a file from the left panel..."></textarea>';
-      html += '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" id="save-prompt-btn" onclick="savePromptFile()" disabled>Save File</button><button class="btn btn-danger btn-sm" id="delete-prompt-btn" onclick="deletePromptFile()" disabled>Delete File</button></div>';
-      html += '</div>';
-      html += '</div>';
-      html += '</div></div>';
-
       document.getElementById('settings-content').innerHTML = html;
+      renderFileTree(d.promptFiles || []);
     }
 
     function esc(s) {
@@ -2245,6 +2303,74 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     function addTechnique() {
       var list = document.getElementById('techniques-list');
       list.insertAdjacentHTML('beforeend', renderTechniqueRow('', '', ''));
+    }
+
+    function renderFileTree(files) {
+      var container = document.getElementById('prompt-file-tree');
+      if (!container) return;
+      // Group by directory
+      var folders = {};
+      var rootFiles = [];
+      files.forEach(function(f) {
+        var idx = f.indexOf('/');
+        if (idx === -1) {
+          rootFiles.push(f);
+        } else {
+          var dir = f.substring(0, idx);
+          if (!folders[dir]) folders[dir] = [];
+          folders[dir].push(f);
+        }
+      });
+      var html = '';
+      var fileIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
+      var folderIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>';
+      var chevronSvg = '<svg class="folder-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
+      // Root files first
+      rootFiles.forEach(function(f) {
+        html += '<div class="prompt-file-item" data-path="' + esc(f) + '" onclick="loadPromptFile(\\'' + esc(f) + '\\', this)">' + fileIcon + ' ' + esc(f) + '</div>';
+      });
+      // Folder groups
+      Object.keys(folders).sort().forEach(function(dir) {
+        html += '<div class="folder-group">';
+        html += '<div class="folder-header" onclick="toggleFolder(this)">' + chevronSvg + ' ' + folderIcon + ' ' + esc(dir) + '/</div>';
+        html += '<div class="folder-files">';
+        folders[dir].forEach(function(f) {
+          var name = f.substring(f.indexOf('/') + 1);
+          html += '<div class="prompt-file-item indented" data-path="' + esc(f) + '" onclick="loadPromptFile(\\'' + esc(f) + '\\', this)">' + fileIcon + ' ' + esc(name) + '</div>';
+        });
+        html += '</div></div>';
+      });
+      container.innerHTML = html;
+    }
+
+    function toggleFolder(el) {
+      el.classList.toggle('collapsed');
+      var files = el.nextElementSibling;
+      if (files) files.classList.toggle('collapsed');
+    }
+
+    async function savePromptConfig() {
+      var c = settingsData.config;
+      c.prompts.system_prompt = document.getElementById('s-system-prompt-path').value.trim();
+      c.prompts.instructions = document.getElementById('s-instructions-path').value.trim();
+      var techniques = {};
+      var defaultTechniques = [];
+      document.querySelectorAll('.technique-row').forEach(function(row) {
+        var name = row.querySelector('.tech-name').value.trim();
+        var desc = row.querySelector('.tech-desc').value.trim();
+        var file = row.querySelector('.tech-file').value.trim();
+        if (name) {
+          techniques[name] = { description: desc, prompt_file: file };
+          defaultTechniques.push(name);
+        }
+      });
+      c.prompts.techniques = techniques;
+      c.prompts.default_techniques = defaultTechniques;
+      try {
+        var res = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(c) });
+        var data = await res.json();
+        if (data.ok) { showToast('Prompt config saved'); } else { showToast(data.error || 'Save failed', 'error'); }
+      } catch(e) { showToast('Save failed: ' + e.message, 'error'); }
     }
 
     function renderRepoCard(pattern, cfg) {
@@ -2295,46 +2421,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       } catch(e) { showToast('Save failed: ' + e.message, 'error'); }
     }
 
-    async function savePrompts() {
-      var c = settingsData.config;
-      var systemPath = document.getElementById('s-system-prompt-path').value.trim();
-      var instructionsPath = document.getElementById('s-instructions-path').value.trim();
-      c.prompts.system_prompt = systemPath;
-      c.prompts.instructions = instructionsPath;
-
-      // Save technique config
-      var techniques = {};
-      var defaultTechniques = [];
-      document.querySelectorAll('.technique-row').forEach(function(row) {
-        var name = row.querySelector('.tech-name').value.trim();
-        var desc = row.querySelector('.tech-desc').value.trim();
-        var file = row.querySelector('.tech-file').value.trim();
-        if (name) {
-          techniques[name] = { description: desc, prompt_file: file };
-          defaultTechniques.push(name);
-        }
-      });
-      c.prompts.techniques = techniques;
-      c.prompts.default_techniques = defaultTechniques;
-
-      try {
-        // Save config
-        var res = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(c) });
-        var data = await res.json();
-        if (!data.ok) { showToast(data.error || 'Config save failed', 'error'); return; }
-
-        // Save prompt file contents
-        var systemContent = document.getElementById('s-system-prompt-content').value;
-        var instructionsContent = document.getElementById('s-instructions-content').value;
-        if (systemPath) {
-          await fetch('/api/settings/prompts/' + encodeURIComponent(systemPath.replace(/^~\\/\\.config\\/iago\\/prompts\\//, '')), { method: 'POST', headers: {'Content-Type':'text/plain'}, body: systemContent });
-        }
-        if (instructionsPath) {
-          await fetch('/api/settings/prompts/' + encodeURIComponent(instructionsPath.replace(/^~\\/\\.config\\/iago\\/prompts\\//, '')), { method: 'POST', headers: {'Content-Type':'text/plain'}, body: instructionsContent });
-        }
-        showToast('Prompts saved');
-      } catch(e) { showToast('Save failed: ' + e.message, 'error'); }
-    }
+    // savePrompts is now split into savePromptConfig (config) and savePromptFile (file content)
 
     async function saveRepos() {
       var repos = {};
@@ -2534,7 +2621,7 @@ export function createDashboardServer(
     };
   }
 
-  // Build system prompt for chat with review context
+  // Build system prompt for chat with review context + settings awareness
   function buildChatSystemPrompt(): string {
     const allPRs = queries.getAllPRs();
     const stats = computeStats(queries);
@@ -2553,7 +2640,22 @@ export function createDashboardServer(
       return `- ${t.tool_name}: ${t.total} runs, ${t.success} success, avg ${(t.avg_duration_ms / 1000).toFixed(1)}s`;
     }).join("\n");
 
-    return `You are an AI assistant embedded in "iago", a code review automation tool. Your job is to help the user understand their review history, patterns, and insights.
+    // Settings context
+    const cfg = currentConfig;
+    const repoOverrides = Object.keys(cfg.repos || {}).map((pattern) => {
+      const r = cfg.repos[pattern];
+      return `- ${pattern}: auto_review=${r.auto_review ?? false}${r.prompts?.system_prompt ? ', system_prompt=' + r.prompts.system_prompt : ''}${r.prompts?.instructions ? ', instructions=' + r.prompts.instructions : ''}`;
+    }).join("\n");
+
+    const promptFiles = listPromptFiles(getPromptsDir());
+    const promptFilesList = promptFiles.map(f => `- ${f}`).join("\n");
+
+    const techList = Object.keys(cfg.prompts.techniques || {}).map((k) => {
+      const t = cfg.prompts.techniques[k];
+      return `- ${k}: ${t.description || '(no description)'} -> ${t.prompt_file || '(no file)'}`;
+    }).join("\n");
+
+    return `You are an AI assistant embedded in "iago", a code review automation tool. You help users understand their review history and also modify iago settings.
 
 REVIEW STATISTICS:
 - Total reviews: ${stats.totalReviews}
@@ -2571,13 +2673,111 @@ ${repoSummaries || "No repository data."}
 TOOL STATS:
 ${toolSummaries || "No tool data."}
 
+CURRENT CONFIG:
+- Poll interval: ${cfg.github.poll_interval}
+- Max parallel: ${cfg.launchers.max_parallel}
+- Dashboard port: ${cfg.dashboard.port}
+- System prompt file: ${cfg.prompts.system_prompt || '(not set)'}
+- Instructions file: ${cfg.prompts.instructions || '(not set)'}
+- Notifications: native=${cfg.notifications.native}, on_new_pr=${cfg.notifications.on_new_pr}, on_review_complete=${cfg.notifications.on_review_complete}, on_review_error=${cfg.notifications.on_review_error}
+- Watched repos: ${(cfg.github.watched_repos || []).join(', ') || '(none)'}
+- Ignored repos: ${(cfg.github.ignored_repos || []).join(', ') || '(none)'}
+
+REPOSITORY OVERRIDES:
+${repoOverrides || "No overrides configured."}
+
+TECHNIQUES:
+${techList || "No techniques configured."}
+
+PROMPT FILES (in ~/.config/iago/prompts/):
+${promptFilesList || "No prompt files."}
+
+SETTINGS ACTIONS:
+You can modify iago settings by including action blocks in your response.
+Wrap each action in a \`\`\`iago-action JSON block:
+
+To update the full config (merges with existing):
+\`\`\`iago-action
+{"action": "save_config", "config": {"github": {"poll_interval": "2m"}}}
+\`\`\`
+
+To update a prompt file:
+\`\`\`iago-action
+{"action": "save_prompt", "file": "system.md", "content": "...new content..."}
+\`\`\`
+
+To create a new prompt file:
+\`\`\`iago-action
+{"action": "create_prompt", "file": "myrepo/system.md", "content": "..."}
+\`\`\`
+
+To add or update a repo override:
+\`\`\`iago-action
+{"action": "add_repo", "pattern": "owner/repo", "config": {"auto_review": true}}
+\`\`\`
+
 RULES:
 1. Answer questions about review history, patterns, and statistics
 2. Be concise but thorough
 3. When asked for summaries, organize by repo or status
 4. Point out notable patterns (recurring errors, slow reviews, etc.)
 5. Format responses with markdown (bold, code, lists)
-6. If asked about a specific PR, reference its details from the data above`;
+6. If asked about a specific PR, reference its details from the data above
+7. When asked to change settings, emit the appropriate iago-action blocks
+8. When modifying prompt files, always provide the FULL content (not partial)
+9. Always explain what you changed after emitting action blocks`;
+  }
+
+  // Execute a settings action from chat
+  function executeSettingsAction(actionData: any): string {
+    try {
+      switch (actionData.action) {
+        case "save_config": {
+          // Merge partial config into current config
+          const partial = actionData.config;
+          if (!partial || typeof partial !== "object") return "Error: missing config object";
+          const merged = { ...currentConfig };
+          for (const [key, val] of Object.entries(partial)) {
+            if (typeof val === "object" && val !== null && !Array.isArray(val) && typeof (merged as any)[key] === "object") {
+              (merged as any)[key] = { ...(merged as any)[key], ...val };
+            } else {
+              (merged as any)[key] = val;
+            }
+          }
+          saveConfig(merged as AppConfig);
+          currentConfig = loadConfig();
+          return "Updated config: " + Object.keys(partial).join(", ");
+        }
+        case "save_prompt":
+        case "create_prompt": {
+          const filePath = actionData.file;
+          const content = actionData.content;
+          if (!filePath || typeof filePath !== "string") return "Error: missing file path";
+          if (content == null) return "Error: missing content";
+          const promptsDir = getPromptsDir();
+          if (!isPathSafe(promptsDir, filePath)) return "Error: invalid path";
+          const fullPath = resolve(promptsDir, filePath);
+          const dir = join(fullPath, "..");
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          writeFileSync(fullPath, content, "utf-8");
+          return (actionData.action === "create_prompt" ? "Created " : "Updated ") + filePath;
+        }
+        case "add_repo": {
+          const pattern = actionData.pattern;
+          const repoCfg = actionData.config;
+          if (!pattern || typeof pattern !== "string") return "Error: missing pattern";
+          if (!currentConfig.repos) currentConfig.repos = {};
+          currentConfig.repos[pattern] = { ...currentConfig.repos[pattern], ...repoCfg };
+          saveConfig(currentConfig);
+          currentConfig = loadConfig();
+          return "Updated repo override: " + pattern;
+        }
+        default:
+          return "Error: unknown action: " + actionData.action;
+      }
+    } catch (e: any) {
+      return "Error: " + e.message;
+    }
   }
 
   const server = Bun.serve({
@@ -2746,7 +2946,7 @@ RULES:
           return Response.json(buildFindingsResponse());
         }
 
-        // POST /api/chat — Chat with Claude via CLI
+        // POST /api/chat — Chat with Claude via CLI (settings-aware)
         if (path === "/api/chat" && req.method === "POST") {
           try {
             const body = await req.json() as { messages: { role: string; content: string }[] };
@@ -2790,7 +2990,38 @@ RULES:
               return Response.json({ ok: false, error: stderr || "Claude CLI failed" });
             }
 
-            return Response.json({ ok: true, response: stdout.trim() });
+            let responseText = stdout.trim();
+
+            // Parse and execute iago-action blocks
+            const actionRegex = /```iago-action\s*\n([\s\S]*?)\n```/g;
+            const actions: { action: string; result: string }[] = [];
+            let match;
+            while ((match = actionRegex.exec(responseText)) !== null) {
+              try {
+                const actionData = JSON.parse(match[1]!);
+                const result = executeSettingsAction(actionData);
+                actions.push({ action: actionData.action, result });
+              } catch (e: any) {
+                actions.push({ action: "parse_error", result: e.message });
+              }
+            }
+
+            // Strip action blocks from displayed response
+            let cleanedText = responseText.replace(/```iago-action\s*\n[\s\S]*?\n```/g, "").trim();
+
+            // Append action summary if any actions were taken
+            if (actions.length > 0) {
+              const successActions = actions.filter(a => !a.result.startsWith("Error"));
+              if (successActions.length > 0) {
+                cleanedText += "\n\n---\n" + successActions.map(a => "Applied: " + a.result).join("\n");
+              }
+              const failedActions = actions.filter(a => a.result.startsWith("Error"));
+              if (failedActions.length > 0) {
+                cleanedText += "\n" + failedActions.map(a => "Failed: " + a.result).join("\n");
+              }
+            }
+
+            return Response.json({ ok: true, response: cleanedText, actions });
           } catch (err: any) {
             return Response.json({ ok: false, error: err.message });
           }
