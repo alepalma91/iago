@@ -1,5 +1,5 @@
-import { parse as parseYAML } from "yaml";
-import { readFileSync, existsSync, cpSync, mkdirSync } from "fs";
+import { parse as parseYAML, stringify as stringifyYAML } from "yaml";
+import { readFileSync, writeFileSync, existsSync, cpSync, mkdirSync, renameSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import type { AppConfig, RepoConfig } from "../types/index.js";
@@ -127,6 +127,18 @@ export function loadConfig(path?: string): AppConfig {
   }
 
   return deepMerge(DEFAULT_CONFIG, parsed) as AppConfig;
+}
+
+export function saveConfig(config: AppConfig, path?: string): void {
+  const configPath = path ?? join(getConfigDir(), "config.yaml");
+  const configDir = join(configPath, "..");
+  if (!existsSync(configDir)) {
+    mkdirSync(configDir, { recursive: true });
+  }
+  const yaml = stringifyYAML(config, { lineWidth: 120 });
+  const tmpPath = configPath + ".tmp";
+  writeFileSync(tmpPath, yaml, "utf-8");
+  renameSync(tmpPath, configPath);
 }
 
 export function loadRepoConfig(worktreePath: string): Partial<AppConfig> {

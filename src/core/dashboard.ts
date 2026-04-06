@@ -4,6 +4,9 @@ import type { Queries } from "../db/queries.js";
 import { createQueries } from "../db/queries.js";
 import type { PRReview } from "../types/index.js";
 import { killProcess, getProcess } from "./process-registry.js";
+import { loadConfig, saveConfig, getConfigDir, resolveHome } from "./config.js";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync } from "fs";
+import { join, resolve } from "path";
 
 export interface DashboardServer {
   server: ReturnType<typeof Bun.serve>;
@@ -1097,6 +1100,218 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       .nav-inner { padding: 0 16px; }
       .cell-tools, .cell-title, .cell-age { display: none; }
     }
+
+    /* ── Settings ── */
+    .settings-section {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .settings-section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 20px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.15s;
+    }
+    .settings-section-header:hover { background: rgba(255,255,255,0.02); }
+    .settings-section-header .chevron {
+      transition: transform 0.2s;
+      opacity: 0.5;
+    }
+    .settings-section.open .settings-section-header {
+      border-bottom-color: var(--border);
+    }
+    .settings-section.open .settings-section-header .chevron {
+      transform: rotate(90deg);
+    }
+    .settings-section-body {
+      display: none;
+      padding: 20px;
+    }
+    .settings-section.open .settings-section-body {
+      display: block;
+    }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .settings-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .settings-field.full-width {
+      grid-column: 1 / -1;
+    }
+    .settings-field label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .settings-field input[type="text"],
+    .settings-field input[type="number"],
+    .settings-field textarea,
+    .settings-field select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      padding: 8px 10px;
+      transition: border-color 0.15s;
+    }
+    .settings-field input:focus,
+    .settings-field textarea:focus,
+    .settings-field select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .settings-field textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+    .settings-field textarea.prompt-editor {
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      min-height: 200px;
+    }
+    .settings-field .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .settings-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .settings-check input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 16px;
+      height: 16px;
+    }
+    .settings-check span {
+      font-size: 13px;
+      color: var(--text);
+    }
+    .settings-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .repo-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 10px;
+    }
+    .repo-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .repo-card-header:hover { background: rgba(255,255,255,0.02); }
+    .repo-card-header .chevron {
+      transition: transform 0.2s;
+      opacity: 0.5;
+      margin-left: auto;
+    }
+    .repo-card.open .repo-card-header .chevron {
+      transform: rotate(90deg);
+    }
+    .repo-card-body {
+      display: none;
+      padding: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .repo-card.open .repo-card-body {
+      display: block;
+    }
+    .prompt-file-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-secondary);
+      transition: background 0.15s;
+    }
+    .prompt-file-item:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+    .prompt-file-item.active {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .prompt-file-item svg { opacity: 0.5; flex-shrink: 0; }
+    .technique-row {
+      display: grid;
+      grid-template-columns: 1fr 2fr 2fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .technique-row input, .technique-row select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 12px;
+      padding: 6px 8px;
+    }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 1000;
+      animation: slideIn 0.2s ease-out;
+      pointer-events: none;
+    }
+    .toast.success {
+      background: color-mix(in srgb, var(--success) 15%, var(--bg-raised));
+      border: 1px solid var(--success);
+      color: var(--success);
+    }
+    .toast.error {
+      background: color-mix(in srgb, var(--error) 15%, var(--bg-raised));
+      border: 1px solid var(--error);
+      color: var(--error);
+    }
+    @keyframes slideIn {
+      from { transform: translateY(10px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -1117,6 +1332,10 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
         <button class="nav-tab" onclick="switchTab('analytics')" id="tab-btn-analytics">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
           Analytics
+        </button>
+        <button class="nav-tab" onclick="switchTab('settings')" id="tab-btn-settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          Settings
         </button>
       </div>
       <div class="nav-right">
@@ -1230,6 +1449,16 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       </div>
     </div>
 
+    <!-- Settings Tab -->
+    <div id="tab-settings" class="tab-panel">
+      <div id="settings-content">
+        <div style="text-align:center;padding:48px;color:var(--text-muted)">
+          <span class="spinner"></span>
+          <p style="margin-top:12px">Loading settings...</p>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Chat Sidebar -->
@@ -1277,6 +1506,8 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     let chartInstances = {};
     let chatHistory = [];
     let analyticsLoaded = false;
+    let settingsLoaded = false;
+    let settingsData = null;
     let currentFilters = { status: 'active', githubState: 'all' };
 
     // ── Tab switching ──
@@ -1288,6 +1519,10 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       if (tab === 'analytics' && !analyticsLoaded) {
         analyticsLoaded = true;
         loadAnalytics();
+      }
+      if (tab === 'settings' && !settingsLoaded) {
+        settingsLoaded = true;
+        loadSettings();
       }
     }
 
@@ -1878,6 +2113,318 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     });
     window.addEventListener('beforeunload', disconnectSSE);
 
+    // ── Settings ──
+    function showToast(msg, type) {
+      var existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+      var el = document.createElement('div');
+      el.className = 'toast ' + (type || 'success');
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(function() { el.remove(); }, 3000);
+    }
+
+    function toggleSettingsSection(el) {
+      el.closest('.settings-section').classList.toggle('open');
+    }
+
+    function toggleRepoCard(el) {
+      el.closest('.repo-card').classList.toggle('open');
+    }
+
+    async function loadSettings() {
+      try {
+        var res = await fetch('/api/settings');
+        settingsData = await res.json();
+        renderSettings();
+      } catch(e) {
+        document.getElementById('settings-content').innerHTML = '<div style="text-align:center;padding:48px;color:var(--text-muted)">Failed to load settings</div>';
+      }
+    }
+
+    function renderSettings() {
+      var d = settingsData;
+      if (!d) return;
+      var c = d.config;
+      var html = '';
+
+      // Section 1: Global Settings
+      html += '<div class="settings-section open">';
+      html += '<div class="settings-section-header" onclick="toggleSettingsSection(this)"><svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg> Global Settings</div>';
+      html += '<div class="settings-section-body">';
+      html += '<div class="settings-grid">';
+      html += '<div class="settings-field"><label>Poll Interval</label><input type="text" id="s-poll-interval" value="' + esc(c.github.poll_interval) + '"><div class="hint">e.g. 60s, 5m</div></div>';
+      html += '<div class="settings-field"><label>Max Parallel Reviews</label><input type="number" id="s-max-parallel" value="' + c.launchers.max_parallel + '" min="1" max="10"></div>';
+      html += '<div class="settings-field"><label>Dashboard Port</label><input type="number" id="s-dashboard-port" value="' + c.dashboard.port + '"></div>';
+      html += '<div class="settings-field"><label>Notifications</label>';
+      html += '<label class="settings-check"><input type="checkbox" id="s-notif-native" ' + (c.notifications.native ? 'checked' : '') + '><span>Native notifications</span></label>';
+      html += '<label class="settings-check"><input type="checkbox" id="s-notif-new-pr" ' + (c.notifications.on_new_pr ? 'checked' : '') + '><span>On new PR</span></label>';
+      html += '<label class="settings-check"><input type="checkbox" id="s-notif-complete" ' + (c.notifications.on_review_complete ? 'checked' : '') + '><span>On review complete</span></label>';
+      html += '<label class="settings-check"><input type="checkbox" id="s-notif-error" ' + (c.notifications.on_review_error ? 'checked' : '') + '><span>On review error</span></label>';
+      html += '</div>';
+      html += '<div class="settings-field full-width"><label>Watched Repos</label><textarea id="s-watched-repos" rows="3">' + esc((c.github.watched_repos || []).join('\\n')) + '</textarea><div class="hint">One repo per line (owner/repo)</div></div>';
+      html += '<div class="settings-field full-width"><label>Ignored Repos</label><textarea id="s-ignored-repos" rows="3">' + esc((c.github.ignored_repos || []).join('\\n')) + '</textarea><div class="hint">One repo per line (owner/repo)</div></div>';
+      html += '</div>';
+      html += '<div class="settings-actions"><button class="btn btn-primary btn-sm" onclick="saveGlobalSettings()">Save Global Settings</button></div>';
+      html += '</div></div>';
+
+      // Section 2: Prompts
+      html += '<div class="settings-section">';
+      html += '<div class="settings-section-header" onclick="toggleSettingsSection(this)"><svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg> Prompts</div>';
+      html += '<div class="settings-section-body">';
+      html += '<div class="settings-field"><label>System Prompt File</label><input type="text" id="s-system-prompt-path" value="' + esc(c.prompts.system_prompt || '') + '"><div class="hint">Path to system prompt .md file</div></div>';
+      html += '<div class="settings-field full-width"><label>System Prompt Content</label><textarea class="prompt-editor" id="s-system-prompt-content">' + esc(d.promptContents.system_prompt || '') + '</textarea></div>';
+      html += '<div class="settings-field"><label>Instructions File</label><input type="text" id="s-instructions-path" value="' + esc(c.prompts.instructions || '') + '"><div class="hint">Path to instructions .md file</div></div>';
+      html += '<div class="settings-field full-width"><label>Instructions Content</label><textarea class="prompt-editor" id="s-instructions-content">' + esc(d.promptContents.instructions || '') + '</textarea></div>';
+
+      // Techniques
+      html += '<div class="settings-field full-width"><label>Techniques</label>';
+      var techKeys = Object.keys(c.prompts.techniques || {});
+      html += '<div id="techniques-list">';
+      techKeys.forEach(function(key) {
+        var t = c.prompts.techniques[key];
+        html += renderTechniqueRow(key, t.description || '', t.prompt_file || '');
+      });
+      html += '</div>';
+      html += '<button class="btn btn-ghost btn-sm" onclick="addTechnique()" style="margin-top:8px">+ Add Technique</button>';
+      html += '</div>';
+
+      html += '<div class="settings-actions"><button class="btn btn-primary btn-sm" onclick="savePrompts()">Save Prompts</button></div>';
+      html += '</div></div>';
+
+      // Section 3: Repository Overrides
+      html += '<div class="settings-section">';
+      html += '<div class="settings-section-header" onclick="toggleSettingsSection(this)"><svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg> Repository Overrides</div>';
+      html += '<div class="settings-section-body">';
+      var repoKeys = Object.keys(c.repos || {});
+      html += '<div id="repo-list">';
+      repoKeys.forEach(function(pattern) {
+        html += renderRepoCard(pattern, c.repos[pattern]);
+      });
+      html += '</div>';
+      html += '<div style="display:flex;gap:8px;margin-top:12px"><input type="text" id="new-repo-pattern" placeholder="owner/repo or glob pattern" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:13px;padding:8px 10px"><button class="btn btn-ghost btn-sm" onclick="addRepo()">Add Repository</button></div>';
+      html += '<div class="hint" style="margin-top:4px">Supports glob patterns: * matches all, org/* matches org repos</div>';
+      html += '<div class="settings-actions"><button class="btn btn-primary btn-sm" onclick="saveRepos()">Save Repository Overrides</button></div>';
+      html += '</div></div>';
+
+      // Section 4: Prompt Files Browser
+      html += '<div class="settings-section">';
+      html += '<div class="settings-section-header" onclick="toggleSettingsSection(this)"><svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg> Prompt Files Browser</div>';
+      html += '<div class="settings-section-body">';
+      html += '<div style="display:flex;gap:16px;min-height:300px">';
+      // File list
+      html += '<div style="width:240px;flex-shrink:0">';
+      html += '<div id="prompt-file-list">';
+      (d.promptFiles || []).forEach(function(f) {
+        html += '<div class="prompt-file-item" onclick="loadPromptFile(\\'' + esc(f) + '\\', this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>' + esc(f) + '</div>';
+      });
+      html += '</div>';
+      html += '<div style="margin-top:10px;display:flex;gap:6px"><input type="text" id="new-prompt-file" placeholder="path/file.md" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:12px;padding:6px 8px"><button class="btn btn-ghost btn-sm" onclick="createPromptFile()">New</button></div>';
+      html += '</div>';
+      // Editor
+      html += '<div style="flex:1;display:flex;flex-direction:column">';
+      html += '<div id="prompt-editor-label" style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">Select a file to edit</div>';
+      html += '<textarea class="prompt-editor" id="prompt-file-editor" style="flex:1" disabled placeholder="Select a file from the left panel..."></textarea>';
+      html += '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" id="save-prompt-btn" onclick="savePromptFile()" disabled>Save File</button><button class="btn btn-danger btn-sm" id="delete-prompt-btn" onclick="deletePromptFile()" disabled>Delete File</button></div>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div></div>';
+
+      document.getElementById('settings-content').innerHTML = html;
+    }
+
+    function esc(s) {
+      if (s == null) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    function renderTechniqueRow(name, description, promptFile) {
+      return '<div class="technique-row"><input type="text" value="' + esc(name) + '" placeholder="name" class="tech-name"><input type="text" value="' + esc(description) + '" placeholder="description" class="tech-desc"><input type="text" value="' + esc(promptFile) + '" placeholder="prompt file path" class="tech-file"><button class="btn btn-danger btn-sm" onclick="this.closest(\\'.technique-row\\').remove()">x</button></div>';
+    }
+
+    function addTechnique() {
+      var list = document.getElementById('techniques-list');
+      list.insertAdjacentHTML('beforeend', renderTechniqueRow('', '', ''));
+    }
+
+    function renderRepoCard(pattern, cfg) {
+      var html = '<div class="repo-card" data-pattern="' + esc(pattern) + '">';
+      html += '<div class="repo-card-header" onclick="toggleRepoCard(this)"><code>' + esc(pattern) + '</code><svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>';
+      html += '<div class="repo-card-body">';
+      html += '<label class="settings-check" style="margin-bottom:10px"><input type="checkbox" class="repo-auto-review" ' + (cfg.auto_review ? 'checked' : '') + '><span>Auto-review PRs</span></label>';
+      if (cfg.prompts) {
+        html += '<div class="settings-field"><label>System Prompt Override</label><input type="text" class="repo-system-prompt" value="' + esc(cfg.prompts.system_prompt || '') + '"></div>';
+        html += '<div class="settings-field"><label>Instructions Override</label><input type="text" class="repo-instructions" value="' + esc(cfg.prompts.instructions || '') + '"></div>';
+      } else {
+        html += '<div class="settings-field"><label>System Prompt Override</label><input type="text" class="repo-system-prompt" value=""></div>';
+        html += '<div class="settings-field"><label>Instructions Override</label><input type="text" class="repo-instructions" value=""></div>';
+      }
+      html += '<button class="btn btn-danger btn-sm" onclick="removeRepo(this)" style="margin-top:10px">Remove</button>';
+      html += '</div></div>';
+      return html;
+    }
+
+    function addRepo() {
+      var input = document.getElementById('new-repo-pattern');
+      var pattern = input.value.trim();
+      if (!pattern) return;
+      var list = document.getElementById('repo-list');
+      list.insertAdjacentHTML('beforeend', renderRepoCard(pattern, {}));
+      input.value = '';
+    }
+
+    function removeRepo(btn) {
+      btn.closest('.repo-card').remove();
+    }
+
+    async function saveGlobalSettings() {
+      var c = settingsData.config;
+      c.github.poll_interval = document.getElementById('s-poll-interval').value;
+      c.launchers.max_parallel = parseInt(document.getElementById('s-max-parallel').value, 10) || 3;
+      c.dashboard.port = parseInt(document.getElementById('s-dashboard-port').value, 10) || 1460;
+      c.notifications.native = document.getElementById('s-notif-native').checked;
+      c.notifications.on_new_pr = document.getElementById('s-notif-new-pr').checked;
+      c.notifications.on_review_complete = document.getElementById('s-notif-complete').checked;
+      c.notifications.on_review_error = document.getElementById('s-notif-error').checked;
+      c.github.watched_repos = document.getElementById('s-watched-repos').value.split('\\n').map(function(s) { return s.trim(); }).filter(Boolean);
+      c.github.ignored_repos = document.getElementById('s-ignored-repos').value.split('\\n').map(function(s) { return s.trim(); }).filter(Boolean);
+      try {
+        var res = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(c) });
+        var data = await res.json();
+        if (data.ok) { showToast('Global settings saved'); } else { showToast(data.error || 'Save failed', 'error'); }
+      } catch(e) { showToast('Save failed: ' + e.message, 'error'); }
+    }
+
+    async function savePrompts() {
+      var c = settingsData.config;
+      var systemPath = document.getElementById('s-system-prompt-path').value.trim();
+      var instructionsPath = document.getElementById('s-instructions-path').value.trim();
+      c.prompts.system_prompt = systemPath;
+      c.prompts.instructions = instructionsPath;
+
+      // Save technique config
+      var techniques = {};
+      var defaultTechniques = [];
+      document.querySelectorAll('.technique-row').forEach(function(row) {
+        var name = row.querySelector('.tech-name').value.trim();
+        var desc = row.querySelector('.tech-desc').value.trim();
+        var file = row.querySelector('.tech-file').value.trim();
+        if (name) {
+          techniques[name] = { description: desc, prompt_file: file };
+          defaultTechniques.push(name);
+        }
+      });
+      c.prompts.techniques = techniques;
+      c.prompts.default_techniques = defaultTechniques;
+
+      try {
+        // Save config
+        var res = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(c) });
+        var data = await res.json();
+        if (!data.ok) { showToast(data.error || 'Config save failed', 'error'); return; }
+
+        // Save prompt file contents
+        var systemContent = document.getElementById('s-system-prompt-content').value;
+        var instructionsContent = document.getElementById('s-instructions-content').value;
+        if (systemPath) {
+          await fetch('/api/settings/prompts/' + encodeURIComponent(systemPath.replace(/^~\\/\\.config\\/iago\\/prompts\\//, '')), { method: 'POST', headers: {'Content-Type':'text/plain'}, body: systemContent });
+        }
+        if (instructionsPath) {
+          await fetch('/api/settings/prompts/' + encodeURIComponent(instructionsPath.replace(/^~\\/\\.config\\/iago\\/prompts\\//, '')), { method: 'POST', headers: {'Content-Type':'text/plain'}, body: instructionsContent });
+        }
+        showToast('Prompts saved');
+      } catch(e) { showToast('Save failed: ' + e.message, 'error'); }
+    }
+
+    async function saveRepos() {
+      var repos = {};
+      document.querySelectorAll('.repo-card').forEach(function(card) {
+        var pattern = card.getAttribute('data-pattern');
+        var autoReview = card.querySelector('.repo-auto-review').checked;
+        var systemPrompt = card.querySelector('.repo-system-prompt').value.trim();
+        var instructions = card.querySelector('.repo-instructions').value.trim();
+        var cfg = { auto_review: autoReview };
+        if (systemPrompt || instructions) {
+          cfg.prompts = {};
+          if (systemPrompt) cfg.prompts.system_prompt = systemPrompt;
+          if (instructions) cfg.prompts.instructions = instructions;
+        }
+        repos[pattern] = cfg;
+      });
+      settingsData.config.repos = repos;
+      try {
+        var res = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(settingsData.config) });
+        var data = await res.json();
+        if (data.ok) { showToast('Repository overrides saved'); } else { showToast(data.error || 'Save failed', 'error'); }
+      } catch(e) { showToast('Save failed: ' + e.message, 'error'); }
+    }
+
+    var currentPromptFile = null;
+    async function loadPromptFile(path, el) {
+      document.querySelectorAll('.prompt-file-item').forEach(function(i) { i.classList.remove('active'); });
+      if (el) el.classList.add('active');
+      currentPromptFile = path;
+      document.getElementById('prompt-editor-label').textContent = path;
+      document.getElementById('prompt-file-editor').disabled = false;
+      document.getElementById('save-prompt-btn').disabled = false;
+      document.getElementById('delete-prompt-btn').disabled = false;
+      try {
+        var res = await fetch('/api/settings/prompts/' + encodeURIComponent(path));
+        var data = await res.json();
+        document.getElementById('prompt-file-editor').value = data.content || '';
+      } catch(e) {
+        document.getElementById('prompt-file-editor').value = '';
+      }
+    }
+
+    async function savePromptFile() {
+      if (!currentPromptFile) return;
+      var content = document.getElementById('prompt-file-editor').value;
+      try {
+        var res = await fetch('/api/settings/prompts/' + encodeURIComponent(currentPromptFile), { method: 'POST', headers: {'Content-Type':'text/plain'}, body: content });
+        var data = await res.json();
+        if (data.ok) { showToast('File saved'); } else { showToast(data.error || 'Save failed', 'error'); }
+      } catch(e) { showToast('Save failed: ' + e.message, 'error'); }
+    }
+
+    async function deletePromptFile() {
+      if (!currentPromptFile) return;
+      if (!confirm('Delete ' + currentPromptFile + '?')) return;
+      try {
+        var res = await fetch('/api/settings/prompts/' + encodeURIComponent(currentPromptFile), { method: 'DELETE' });
+        var data = await res.json();
+        if (data.ok) {
+          showToast('File deleted');
+          currentPromptFile = null;
+          document.getElementById('prompt-editor-label').textContent = 'Select a file to edit';
+          document.getElementById('prompt-file-editor').value = '';
+          document.getElementById('prompt-file-editor').disabled = true;
+          document.getElementById('save-prompt-btn').disabled = true;
+          document.getElementById('delete-prompt-btn').disabled = true;
+          // Refresh file list
+          settingsLoaded = false;
+          loadSettings();
+        } else { showToast(data.error || 'Delete failed', 'error'); }
+      } catch(e) { showToast('Delete failed: ' + e.message, 'error'); }
+    }
+
+    async function createPromptFile() {
+      var input = document.getElementById('new-prompt-file');
+      var path = input.value.trim();
+      if (!path) return;
+      if (!path.endsWith('.md')) path += '.md';
+      try {
+        var res = await fetch('/api/settings/prompts/' + encodeURIComponent(path), { method: 'POST', headers: {'Content-Type':'text/plain'}, body: '' });
+        var data = await res.json();
+        if (data.ok) {
+          showToast('File created');
+          input.value = '';
+          settingsLoaded = false;
+          loadSettings();
+        } else { showToast(data.error || 'Create failed', 'error'); }
+      } catch(e) { showToast('Create failed: ' + e.message, 'error'); }
+    }
+
   </script>
 </body>
 </html>`;
@@ -1889,9 +2436,34 @@ export function createDashboardServer(
   db: Database,
   config: AppConfig
 ): DashboardServer {
+  let currentConfig = config;
   const queries = createQueries(db);
   let lastUpdatedMap = new Map<number, string>();
   const sseClients = new Set<ReadableStreamDefaultController>();
+
+  function getPromptsDir(): string {
+    return join(getConfigDir(), "prompts");
+  }
+
+  function listPromptFiles(dir: string, base?: string): string[] {
+    const result: string[] = [];
+    if (!existsSync(dir)) return result;
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const rel = base ? base + "/" + entry.name : entry.name;
+      if (entry.isDirectory()) {
+        result.push(...listPromptFiles(join(dir, entry.name), rel));
+      } else if (entry.name.endsWith(".md")) {
+        result.push(rel);
+      }
+    }
+    return result.sort();
+  }
+
+  function isPathSafe(promptsDir: string, filePath: string): boolean {
+    const resolved = resolve(promptsDir, filePath);
+    return resolved.startsWith(resolve(promptsDir) + "/") || resolved === resolve(promptsDir);
+  }
 
   function getUpdatedMap(prs: PRReview[]): Map<number, string> {
     const m = new Map<number, string>();
@@ -2244,6 +2816,86 @@ RULES:
               Connection: "keep-alive",
             },
           });
+        }
+
+        // GET /api/settings — return config + prompt contents + prompt file list
+        if (path === "/api/settings" && req.method === "GET") {
+          const promptsDir = getPromptsDir();
+          const promptFiles = listPromptFiles(promptsDir);
+          const promptContents: Record<string, string> = {};
+
+          // Read system prompt and instructions file contents
+          if (currentConfig.prompts.system_prompt) {
+            try {
+              const p = resolveHome(currentConfig.prompts.system_prompt);
+              if (existsSync(p)) promptContents.system_prompt = readFileSync(p, "utf-8");
+            } catch {}
+          }
+          if (currentConfig.prompts.instructions) {
+            try {
+              const p = resolveHome(currentConfig.prompts.instructions);
+              if (existsSync(p)) promptContents.instructions = readFileSync(p, "utf-8");
+            } catch {}
+          }
+
+          return Response.json({
+            config: currentConfig,
+            promptFiles,
+            promptContents,
+          });
+        }
+
+        // POST /api/settings — save full config
+        if (path === "/api/settings" && req.method === "POST") {
+          try {
+            const body = await req.json() as AppConfig;
+            saveConfig(body);
+            currentConfig = loadConfig();
+            return Response.json({ ok: true });
+          } catch (err: any) {
+            return Response.json({ ok: false, error: err.message }, { status: 400 });
+          }
+        }
+
+        // GET /api/settings/prompts — list prompt files
+        if (path === "/api/settings/prompts" && req.method === "GET") {
+          return Response.json(listPromptFiles(getPromptsDir()));
+        }
+
+        // /api/settings/prompts/:path — CRUD for prompt files
+        const promptPathMatch = path.match(/^\/api\/settings\/prompts\/(.+)$/);
+        if (promptPathMatch) {
+          const filePath = decodeURIComponent(promptPathMatch[1]!);
+          const promptsDir = getPromptsDir();
+          if (!isPathSafe(promptsDir, filePath)) {
+            return Response.json({ error: "Invalid path" }, { status: 400 });
+          }
+          const fullPath = resolve(promptsDir, filePath);
+
+          if (req.method === "GET") {
+            if (!existsSync(fullPath)) {
+              return Response.json({ error: "File not found" }, { status: 404 });
+            }
+            return Response.json({ content: readFileSync(fullPath, "utf-8"), path: filePath });
+          }
+
+          if (req.method === "POST") {
+            const dir = join(fullPath, "..");
+            if (!existsSync(dir)) {
+              mkdirSync(dir, { recursive: true });
+            }
+            const content = await req.text();
+            writeFileSync(fullPath, content, "utf-8");
+            return Response.json({ ok: true });
+          }
+
+          if (req.method === "DELETE") {
+            if (!existsSync(fullPath)) {
+              return Response.json({ error: "File not found" }, { status: 404 });
+            }
+            unlinkSync(fullPath);
+            return Response.json({ ok: true });
+          }
         }
 
         return new Response("Not Found", { status: 404 });
