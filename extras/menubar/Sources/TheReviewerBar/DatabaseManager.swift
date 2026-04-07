@@ -64,6 +64,7 @@ final class DatabaseManager {
             SELECT id, pr_number, repo, title, status, url, opened_at
             FROM pr_reviews
             WHERE status IN ('detected', 'notified', 'updated')
+              AND COALESCE(github_state, 'open') = 'open'
             ORDER BY
               CASE WHEN status = 'updated' THEN 0 ELSE 1 END,
               updated_at DESC
@@ -76,10 +77,9 @@ final class DatabaseManager {
         let sql = """
             SELECT id, pr_number, repo, title, status, url, opened_at
             FROM pr_reviews
-            WHERE status IN ('accepted', 'cloning', 'reviewing', 'changes_requested')
-            ORDER BY
-              CASE WHEN status = 'changes_requested' THEN 1 ELSE 0 END,
-              updated_at DESC
+            WHERE status IN ('accepted', 'cloning', 'reviewing')
+              AND COALESCE(github_state, 'open') = 'open'
+            ORDER BY updated_at DESC
             LIMIT 5
             """
         return query(sql)
@@ -89,7 +89,7 @@ final class DatabaseManager {
         let sql = """
             SELECT id, pr_number, repo, title, status, url, opened_at
             FROM pr_reviews
-            WHERE status IN ('done', 'error')
+            WHERE status IN ('done', 'error', 'changes_requested')
               AND updated_at >= datetime('now', '-48 hours')
             ORDER BY updated_at DESC
             LIMIT 5
@@ -123,6 +123,7 @@ final class DatabaseManager {
         let actionCount = countQuery("""
             SELECT COUNT(*) FROM pr_reviews
             WHERE status IN ('detected', 'notified', 'updated')
+              AND COALESCE(github_state, 'open') = 'open'
               AND updated_at >= datetime('now', '-24 hours')
             """)
 

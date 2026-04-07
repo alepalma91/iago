@@ -224,10 +224,12 @@ function computeStats(queries: Queries) {
 // ── Main HTML ──────────────────────────────────────────────────────────────
 
 function renderHTML(prs: PRReview[], queries: Queries): string {
-  const activePRs = prs.filter((pr) => !["done", "error", "dismissed"].includes(pr.status));
+  // Nav badge: only PRs needing attention (to-review + actively running, open only)
+  const actionableStatuses = new Set(["detected", "notified", "accepted", "cloning", "reviewing", "updated"]);
+  const activePRs = prs.filter((pr) => actionableStatuses.has(pr.status) && (pr.github_state ?? "open") === "open");
   const toReviewPRs = prs.filter((pr) => ["detected", "notified", "updated"].includes(pr.status) && (pr.github_state ?? "open") === "open");
-  const inProgressPRs = prs.filter((pr) => ["accepted", "cloning", "reviewing", "changes_requested"].includes(pr.status) && (pr.github_state ?? "open") === "open");
-  const recentPRs = prs.filter((pr) => ["done", "error"].includes(pr.status));
+  const inProgressPRs = prs.filter((pr) => ["accepted", "cloning", "reviewing"].includes(pr.status) && (pr.github_state ?? "open") === "open");
+  const recentPRs = prs.filter((pr) => ["done", "error", "changes_requested"].includes(pr.status));
   // Default view: show non-dismissed PRs
   const defaultFiltered = prs.filter((pr) => pr.status !== "dismissed");
   const firstPage = defaultFiltered.slice(0, PAGE_SIZE);
@@ -1599,13 +1601,15 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
     // ── Multi-select dropdowns ──
     var allStatuses = ['detected','notified','accepted','cloning','reviewing','done','changes_requested','updated','error','dismissed'];
     var activeStatuses = ['detected','notified','accepted','cloning','reviewing','done','changes_requested','updated','error'];
+    // Nav badge: only truly actionable PRs (open + needing attention)
+    var badgeStatuses = ['detected','notified','accepted','cloning','reviewing','updated'];
     var allGhStates = ['open','merged','closed'];
 
     var sectionMap = {
       'all': ['detected','notified','accepted','cloning','reviewing','done','changes_requested','updated','error'],
       'to-review': ['detected','notified','updated'],
-      'in-progress': ['accepted','cloning','reviewing','changes_requested'],
-      'recent': ['done','error']
+      'in-progress': ['accepted','cloning','reviewing'],
+      'recent': ['done','error','changes_requested']
     };
     var currentSection = 'all';
 
@@ -1772,7 +1776,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       await fetchPage(currentPage);
       // Also refresh active count badge + section counts
       try {
-        var res = await fetch('/api/reviews/page?status=' + activeStatuses.join(',') + '&size=1&page=1');
+        var res = await fetch('/api/reviews/page?status=' + badgeStatuses.join(',') + '&github_state=open&size=1&page=1');
         var data = await res.json();
         var badge = document.getElementById('active-count');
         if (badge) badge.textContent = data.totalItems;
@@ -2177,7 +2181,7 @@ function renderHTML(prs: PRReview[], queries: Queries): string {
       sseSource = new EventSource('/api/sse');
       sseSource.addEventListener('pr-update', function() {
         fetchPage(currentPage);
-        fetch('/api/reviews/page?status=' + activeStatuses.join(',') + '&size=1&page=1')
+        fetch('/api/reviews/page?status=' + badgeStatuses.join(',') + '&github_state=open&size=1&page=1')
           .then(function(r) { return r.json(); })
           .then(function(d) {
             var badge = document.getElementById('active-count');
